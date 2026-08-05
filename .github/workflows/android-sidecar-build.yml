@@ -1,0 +1,94 @@
+name: Android Sidecar Build
+
+# 交叉编译 cc-switch 本体（Rust sidecar）到 aarch64-linux-android。
+# 与 android-shim-probe.yml 的分工：那个只编 src-tauri/android 子 workspace 里的
+# tauri 替身；这个编真正的 163k 行本体，把替身接缝上所有遗漏的 cfg 编译错误暴露出来。
+
+on:
+  push:
+    branches: [android-sidecar]
+    paths:
+      - "src-tauri/**"
+      - ".github/workflows/android-sidecar-build.yml"
+  workflow_dispatch:
+    inputs:
+      api_level:
+        description: "Android API level"
+        required: false
+        default: "24"
+        type: string
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src-tauri
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Rust + Android target
+        run: |
+          rustup toolchain install 1.95 --profile minimal
+          rustup default 1.95
+          rustup target add aarch64-linux-android
+          rustc --version
+
+      - name: 安装 libclang (rquickjs bindgen 需要)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libclang-dev clang
+          echo "LIBCLANG_PATH=$(dirname "$(ls /usr/lib/llvm-*/lib/libclang.so* | head -1)")" >> "$GITHUB_ENV"
+
+      - name: 定位 NDK
+        id: ndk
+        run: |
+          ndk_root="$(ls -d "$ANDROID_SDK_ROOT"/ndk/* | sort -V | tail -1)"
+          echo "path=$ndk_root" >> "$GITHUB_OUTPUT"
+          echo "NDK = $ndk_root"
+
+      - name: 缓存 cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ccs-android-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: ccs-android-
+
+      - name: 交叉编译 sidecar
+        env:
+          NDK: ${{ steps.ndk.outputs.path }}
+          API: ${{ inputs.api_level || '24' }}
+        run: |
+          TC="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          export CC_aarch64_linux_android="$TC/aarch64-linux-android$API-clang"
+          export CXX_aarch64_linux_android="$TC/aarch64-linux-android$API-clang++"
+          export AR_aarch64_linux_android="$TC/llvm-ar"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$CC_aarch64_linux_android"
+          export TARGET_CC="$CC_aarch64_linux_android"
+          export TARGET_AR="$AR_aarch64_linux_android"
+          SYSROOT="$NDK/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
+          export BINDGEN_EXTRA_CLANG_ARGS="--target=aarch64-linux-android$API --sysroot=$SYSROOT"
+          export CLANG_PATH="$TC/clang"
+
+          set -o pipefail
+          cargo build --release --target aarch64-linux-android --bin cc-switch 2>&1 | tail -400
+
+      - name: 校验产物
+        run: |
+          bin="target/aarch64-linux-android/release/cc-switch"
+          test -f "$bin"
+          file "$bin"
+          echo "bytes=$(stat -c %s "$bin")"
+          echo "sha256=$(sha256sum "$bin" | cut -d" " -f1)"
+          echo "--- 动态依赖（应只有 bionic，不含 GTK/WebKit）---"
+          "$ANDROID_SDK_ROOT"/ndk/*/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-readelf -d "$bin" | grep -i needed || true
+
+      - name: 上传 sidecar
+        uses: actions/upload-artifact@v4
+        with:
+          name: ccs-sidecar_arm64-v8a
+          path: src-tauri/target/aarch64-linux-android/release/cc-switch
+          if-no-files-found: error
