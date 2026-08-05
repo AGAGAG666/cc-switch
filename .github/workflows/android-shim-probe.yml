@@ -9,6 +9,8 @@ on:
     branches: [android-sidecar]
     paths:
       - 'src-tauri/android/**'
+      - 'src-tauri/Cargo.toml'
+      - 'src-tauri/build.rs'
       - '.github/workflows/android-shim-probe.yml'
   workflow_dispatch:
 

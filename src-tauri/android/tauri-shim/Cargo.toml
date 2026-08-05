@@ -6,7 +6,7 @@ publish = false
 description = "Drop-in replacement for the tauri crate surface used by cc-switch, for the Android sidecar"
 
 [lib]
-name = "tauri_shim"
+name = "tauri"
 
 [dependencies]
 tauri-shim-macros = { path = "../tauri-shim-macros" }
