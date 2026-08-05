@@ -50,3 +50,30 @@ jobs:
 
       - name: clippy（仅提示，不阻断）
         run: cargo clippy --all 2>&1 | tail -80 || true
+
+      - name: 验证 src-tauri 对 shim 的跨 workspace path 依赖能解析
+        working-directory: src-tauri
+        run: |
+          set -o pipefail
+          # 只解析依赖图，不编译。几秒内就能暴露 workspace 归属冲突、
+          # 重命名写错、路径写错等问题。
+          cargo metadata --format-version 1 --filter-platform aarch64-linux-android \
+            --no-deps > /dev/null
+          echo "--- android 目标下 tauri 解析到哪个包 ---"
+          cargo tree --target aarch64-linux-android -e normal -p cc-switch -d 2>/dev/null | head -5 || true
+          cargo tree --target aarch64-linux-android -e normal -i tauri-shim 2>&1 | head -20
+          echo "--- 确认 openssl-sys 未混入 ---"
+          cargo tree --target aarch64-linux-android -e normal > tree.txt
+          if grep -q 'openssl-sys' tree.txt; then
+            echo "::error::openssl-sys 被引入，Android 无系统 openssl"
+            grep -n -B6 'openssl-sys' tree.txt | head -40
+            exit 1
+          fi
+          echo "openssl-sys 未引入 (ok)"
+          echo "--- 确认真实 tauri 未混入 android 依赖图 ---"
+          if grep -qE '^[^a-z]*tauri v2' tree.txt; then
+            echo "::error::真实 tauri crate 出现在 android 依赖图中"
+            grep -n 'tauri v2' tree.txt | head -10
+            exit 1
+          fi
+          echo "真实 tauri 未混入 (ok)"
