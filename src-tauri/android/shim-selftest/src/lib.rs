@@ -5,7 +5,6 @@
 //! `AppHandle`、`AppHandle<R>` + 泛型、`Window`、非 Result 返回、自定义 Display
 //! 错误、`Option<T>` 缺键、`Emitter`、三个插件 Ext trait。
 
-use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
@@ -226,6 +225,7 @@ mod tests {
     use super::*;
     use serde_json::json;
     use tauri::rpc::RpcContext;
+    use std::sync::Arc;
 
     async fn call(name: &str, args: serde_json::Value) -> Result<serde_json::Value, String> {
         let (app, handlers) = build();
