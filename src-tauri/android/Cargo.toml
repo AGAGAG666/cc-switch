@@ -8,5 +8,8 @@ members = [
     "tauri-plugin-opener",
     "tauri-plugin-dialog",
     "tauri-plugin-store",
+    "arboard-shim",
+    "auto-launch-shim",
+    "tauri-plugin-updater-shim",
     "shim-selftest",
 ]
