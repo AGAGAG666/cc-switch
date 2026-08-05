@@ -1,0 +1,17 @@
+[package]
+name = "tauri-shim"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Drop-in replacement for the tauri crate surface used by cc-switch, for the Android sidecar"
+
+[lib]
+name = "tauri_shim"
+
+[dependencies]
+tauri-shim-macros = { path = "../tauri-shim-macros" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = { version = "1.0", features = ["preserve_order"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync"] }
+log = "0.4"
+dirs = "5.0"
