@@ -1,5 +1,16 @@
 fn main() {
-    tauri_build::build();
+    // build.rs 在「宿主」上运行，所以 `#[cfg(target_os = ..)]` 指的是宿主，
+    // 交叉编译时不能用来判断目标平台。目标平台只能从 cargo 注入的
+    // CARGO_CFG_TARGET_OS 读取。
+    let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+
+    // Android sidecar 没有窗口，也没有 WebView：tauri_build::build() 会去解析
+    // tauri.conf.json 的窗口/权限配置并生成 context，在这里既不需要也会失败。
+    if target_os != "android" {
+        tauri_build::build();
+    } else {
+        println!("cargo:warning=android target：跳过 tauri_build::build()（sidecar 无窗口）");
+    }
 
     // Windows: Embed Common Controls v6 manifest for test binaries
     //
@@ -11,8 +22,7 @@ fn main() {
     // 1. Embeds the manifest into test binaries via /MANIFEST:EMBED
     // 2. Uses /MANIFEST:NO for the main binary to avoid duplicate resources
     //    (Tauri already handles manifest embedding for the app binary)
-    #[cfg(target_os = "windows")]
-    {
+    if target_os == "windows" {
         let manifest_path = std::path::PathBuf::from(
             std::env::var("CARGO_MANIFEST_DIR").expect("missing CARGO_MANIFEST_DIR"),
         )

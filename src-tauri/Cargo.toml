@@ -20,6 +20,9 @@ default = []
 test-hooks = []
 
 [build-dependencies]
+# 注意：build-dependencies 的 target cfg 按「宿主」求值，交叉编译时无法用它
+# 排除 android，因此这里保持无条件引入（宿主侧总能编译），由 build.rs 读
+# CARGO_CFG_TARGET_OS 决定是否真的调用 tauri_build::build()。
 tauri-build = { version = "2.4.0", features = [] }
 
 [dependencies]
@@ -27,20 +30,9 @@ serde_json = { version = "1.0", features = ["preserve_order"] }
 serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
 chrono = { version = "0.4", features = ["serde"] }
-tauri = { version = "2.8.2", features = ["tray-icon", "protocol-asset", "image-png"] }
-tauri-plugin-log = "2"
-tauri-plugin-opener = "2"
-tauri-plugin-process = "2"
-tauri-plugin-updater = "2"
-tauri-plugin-dialog = "2"
-tauri-plugin-store = "2"
-tauri-plugin-deep-link = "2"
-tauri-plugin-window-state = "2"
 dirs = "5.0"
 toml = "0.8"
 toml_edit = "0.22"
-reqwest = { version = "0.12", features = ["rustls-tls", "json", "stream", "socks"] }
-arboard = "3.6"
 flate2 = "1"
 brotli = "7"
 zstd = "0.13"
@@ -66,11 +58,9 @@ regex = "1.10"
 rquickjs = { version = "0.8", features = ["array-buffer", "classes"] }
 thiserror = "2.0"
 anyhow = "1.0"
-zip = "2.2"
 serde_yaml = "0.9"
 tempfile = "3"
 url = "2.5"
-auto-launch = "0.5"
 once_cell = "1.21.3"
 base64 = "0.22"
 rusqlite = { version = "0.31", features = ["bundled", "backup", "hooks"] }
@@ -82,6 +72,63 @@ hmac = "0.12"
 json5 = "0.4"
 json-five = "0.3.1"
 sys-locale = "0.3"
+
+# ─── 桌面（非 Android）───────────────────────────────────────────
+# 真实 Tauri 与桌面插件。Android 上由 `android/` 下的同名替身 crate 顶替，
+# 见下方 `cfg(target_os = "android")` 段。这里的写法与上游保持逐字一致，
+# 以便 rebase 时不产生无意义冲突。
+[target.'cfg(not(target_os = "android"))'.dependencies]
+tauri = { version = "2.8.2", features = ["tray-icon", "protocol-asset", "image-png"] }
+tauri-plugin-log = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-process = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-store = "2"
+tauri-plugin-deep-link = "2"
+tauri-plugin-window-state = "2"
+arboard = "3.6"
+auto-launch = "0.5"
+reqwest = { version = "0.12", features = ["rustls-tls", "json", "stream", "socks"] }
+zip = "2.2"
+
+# ─── Android sidecar ───────────────────────────────────────────
+# 用 `package = "..."` 把替身 crate 重命名成上游名字，于是
+# `commands/`（35 文件）、`proxy/`、`services/` 一行不改即可编译。
+# 替身的接缝已由 `android/shim-selftest` 的 20 项断言覆盖。
+#
+# 未列出的 tauri-plugin-log / -process / -deep-link / -window-state /
+# -single-instance 只在 `lib.rs` 的桌面 bootstrap 中使用，Android 上整体
+# cfg 掉，因此无需替身。
+[target.'cfg(target_os = "android")'.dependencies]
+tauri = { package = "tauri-shim", path = "android/tauri-shim" }
+tauri-plugin-opener = { package = "tauri-plugin-opener-shim", path = "android/tauri-plugin-opener" }
+tauri-plugin-dialog = { package = "tauri-plugin-dialog-shim", path = "android/tauri-plugin-dialog" }
+tauri-plugin-store = { package = "tauri-plugin-store-shim", path = "android/tauri-plugin-store" }
+tauri-plugin-updater = { package = "tauri-plugin-updater-shim", path = "android/tauri-plugin-updater-shim" }
+arboard = { package = "arboard-shim", path = "android/arboard-shim" }
+auto-launch = { package = "auto-launch-shim", path = "android/auto-launch-shim" }
+# NDK 无系统 openssl：必须关掉 reqwest 的 default-tls，显式补回
+# 默认特性里仍需要的 charset / http2，避免行为与桌面产生差异。
+reqwest = { version = "0.12", default-features = false, features = [
+    "rustls-tls",
+    "json",
+    "stream",
+    "socks",
+    "charset",
+    "http2",
+] }
+# zip 的默认特性含 lzma 等需要 C 工具链的后端，交叉编译会失败；
+# 只保留仓库实际用到的压缩方式。
+zip = { version = "2.2", default-features = false, features = [
+    "deflate",
+    "bzip2",
+    "zstd",
+    "time",
+] }
+# rquickjs-sys 没有 android 的预生成绑定，必须现场 bindgen
+# （上游对 Windows aarch64 同样这么处理，见下方 target 段）。
+rquickjs = { version = "0.8", features = ["bindgen"] }
 
 [target.'cfg(any(target_os = "macos", target_os = "windows", target_os = "linux"))'.dependencies]
 tauri-plugin-single-instance = "2"
