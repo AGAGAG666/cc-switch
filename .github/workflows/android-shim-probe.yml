@@ -29,10 +29,14 @@ jobs:
           rustc --version
 
       - name: 宿主编译（清类型错误）
-        run: cargo build --all 2>&1 | tail -200
+        run: |
+          set -o pipefail
+          cargo build --all 2>&1 | tail -200
 
       - name: 宏展开自测（真实命令形态 + 运行断言）
-        run: cargo test --all -- --nocapture 2>&1 | tail -120
+        run: |
+          set -o pipefail
+          cargo test --all -- --nocapture 2>&1 | tail -120
 
       - name: 交叉编译 aarch64-linux-android
         run: |
@@ -41,6 +45,7 @@ jobs:
           export CC_aarch64_linux_android="$TC/aarch64-linux-android24-clang"
           export AR_aarch64_linux_android="$TC/llvm-ar"
           export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$CC_aarch64_linux_android"
+          set -o pipefail
           cargo build --all --target aarch64-linux-android 2>&1 | tail -100
 
       - name: clippy（仅提示，不阻断）
