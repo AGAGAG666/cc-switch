@@ -1,0 +1,20 @@
+[package]
+name = "shim-selftest"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "验证 tauri-shim 的宏展开：用真实 cc-switch 命令形态做编译+运行断言"
+
+# 关键：用 package 重命名把 tauri-shim 变成 `tauri`。
+# 这同时验证了 src-tauri 将要使用的重命名接缝本身。
+[dependencies]
+tauri = { package = "tauri-shim", path = "../tauri-shim" }
+tauri-plugin-opener = { package = "tauri-plugin-opener-shim", path = "../tauri-plugin-opener" }
+tauri-plugin-dialog = { package = "tauri-plugin-dialog-shim", path = "../tauri-plugin-dialog" }
+tauri-plugin-store = { package = "tauri-plugin-store-shim", path = "../tauri-plugin-store" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
