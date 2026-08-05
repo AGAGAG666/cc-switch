@@ -1,0 +1,11 @@
+# 独立 workspace：让 5 个 shim crate 可以单独编译/检查，
+# 不影响 src-tauri 本体（后者通过 path 依赖引用它们）。
+[workspace]
+resolver = "2"
+members = [
+    "tauri-shim",
+    "tauri-shim-macros",
+    "tauri-plugin-opener",
+    "tauri-plugin-dialog",
+    "tauri-plugin-store",
+]
