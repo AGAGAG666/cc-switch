@@ -93,21 +93,28 @@ reqwest = { version = "0.12", features = ["rustls-tls", "json", "stream", "socks
 zip = "2.2"
 
 # ─── Android sidecar ───────────────────────────────────────────
-# 用 `package = "..."` 把替身 crate 重命名成上游名字，于是
-# `commands/`（35 文件）、`proxy/`、`services/` 一行不改即可编译。
+# 替身 crate。这里**不能**用 `tauri = { package = "tauri-shim", .. }` 的写法：
+# cargo 硬性要求「同一个依赖名在所有 target 下必须指向同一个源」，否则报
+#   Dependency 'arboard' has different source paths depending on the build target.
+# 因此 Android 段的依赖名必须与桌面段不同（用替身包自己的名字），
+# 而 `commands/` 里 `tauri::` / `arboard::` 这些**路径不变**的原因是：
+# 未使用 `package` 重命名时，extern crate 名取自被依赖包的 `[lib] name`，
+# 各替身已分别把 lib name 设为 tauri / arboard / auto_launch /
+# tauri_plugin_{opener,dialog,store,updater}。
+# 于是 `commands/`（35 文件）、`proxy/`、`services/` 一行不改即可编译。
 # 替身的接缝已由 `android/shim-selftest` 的 20 项断言覆盖。
 #
 # 未列出的 tauri-plugin-log / -process / -deep-link / -window-state /
 # -single-instance 只在 `lib.rs` 的桌面 bootstrap 中使用，Android 上整体
 # cfg 掉，因此无需替身。
 [target.'cfg(target_os = "android")'.dependencies]
-tauri = { package = "tauri-shim", path = "android/tauri-shim" }
-tauri-plugin-opener = { package = "tauri-plugin-opener-shim", path = "android/tauri-plugin-opener" }
-tauri-plugin-dialog = { package = "tauri-plugin-dialog-shim", path = "android/tauri-plugin-dialog" }
-tauri-plugin-store = { package = "tauri-plugin-store-shim", path = "android/tauri-plugin-store" }
-tauri-plugin-updater = { package = "tauri-plugin-updater-shim", path = "android/tauri-plugin-updater-shim" }
-arboard = { package = "arboard-shim", path = "android/arboard-shim" }
-auto-launch = { package = "auto-launch-shim", path = "android/auto-launch-shim" }
+tauri-shim = { path = "android/tauri-shim" }
+tauri-plugin-opener-shim = { path = "android/tauri-plugin-opener" }
+tauri-plugin-dialog-shim = { path = "android/tauri-plugin-dialog" }
+tauri-plugin-store-shim = { path = "android/tauri-plugin-store" }
+tauri-plugin-updater-shim = { path = "android/tauri-plugin-updater-shim" }
+arboard-shim = { path = "android/arboard-shim" }
+auto-launch-shim = { path = "android/auto-launch-shim" }
 # NDK 无系统 openssl：必须关掉 reqwest 的 default-tls，显式补回
 # 默认特性里仍需要的 charset / http2，避免行为与桌面产生差异。
 reqwest = { version = "0.12", default-features = false, features = [
