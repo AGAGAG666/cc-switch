@@ -18,7 +18,7 @@
 
 use std::marker::PhantomData;
 
-use tauri::{AppHandle, Runtime};
+use tauri_shim::{AppHandle, Runtime};
 
 /// 复刻 `tauri_plugin_updater::Error`（调用点只用 `Display`）。
 #[derive(Debug)]
