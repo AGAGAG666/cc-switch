@@ -31,5 +31,46 @@ fn main() {
         }
     }
 
+    #[cfg(not(target_os = "android"))]
     cc_switch_lib::run();
+
+    // Android 上没有 WebView 宿主窗口，本进程作为 sidecar 运行：
+    // 只起本地 HTTP 面（/rpc、/events、/health）与代理服务，UI 由 ZeroTermux 的
+    // WebView 承载。真实端口与访问 token 由 run_sidecar 以一行 JSON 打到 stdout。
+    #[cfg(target_os = "android")]
+    {
+        let port = android_sidecar_port();
+        if let Err(err) = cc_switch_lib::run_sidecar(port) {
+            eprintln!("cc-switch sidecar 启动失败: {err}");
+            std::process::exit(1);
+        }
+    }
+}
+
+/// 解析 sidecar 监听端口。
+///
+/// 优先级：`--port <N>` / `--port=<N>` 命令行参数 > `CCS_SIDECAR_PORT` 环境变量 >
+/// 0（交由内核分配，宿主从握手行读取真实端口）。无法解析的值一律回落到 0，
+/// 避免宿主因参数拼写错误直接拿不到服务。
+#[cfg(target_os = "android")]
+fn android_sidecar_port() -> u16 {
+    let mut args = std::env::args().skip(1);
+    while let Some(arg) = args.next() {
+        if let Some(value) = arg.strip_prefix("--port=") {
+            if let Ok(port) = value.parse::<u16>() {
+                return port;
+            }
+        } else if arg == "--port" {
+            if let Some(value) = args.next() {
+                if let Ok(port) = value.parse::<u16>() {
+                    return port;
+                }
+            }
+        }
+    }
+
+    std::env::var("CCS_SIDECAR_PORT")
+        .ok()
+        .and_then(|v| v.parse::<u16>().ok())
+        .unwrap_or(0)
 }

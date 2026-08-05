@@ -109,6 +109,19 @@ impl<R: Runtime> AppHandle<R> {
     pub fn host(&self) -> &Arc<dyn HostBridge> {
         &self.inner.host
     }
+
+    /// 复刻 `AppHandle::env()`。原版返回进程环境快照供 `process::restart` 使用；
+    /// Android 上 restart 由宿主执行，这里只需保持调用形状。
+    pub fn env(&self) -> crate::Env {
+        crate::Env
+    }
+
+    /// 复刻 `AppHandle::restart()`。原版 `-> !`（re-exec 当前进程）。
+    /// Android 上把请求交给宿主（Java 层重启 sidecar），随后退出本进程。
+    pub fn restart(&self) -> ! {
+        self.inner.host.restart();
+        std::process::exit(crate::RESTART_EXIT_CODE);
+    }
 }
 
 /// 复刻 `tauri::Manager`：状态注册与读取。
