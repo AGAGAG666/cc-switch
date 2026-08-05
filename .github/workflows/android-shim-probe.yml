@@ -31,6 +31,9 @@ jobs:
       - name: 宿主编译（清类型错误）
         run: cargo build --all 2>&1 | tail -200
 
+      - name: 宏展开自测（真实命令形态 + 运行断言）
+        run: cargo test --all -- --nocapture 2>&1 | tail -120
+
       - name: 交叉编译 aarch64-linux-android
         run: |
           ndk_root="$(ls -d "$ANDROID_SDK_ROOT"/ndk/* | sort -V | tail -1)"
