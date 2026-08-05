@@ -1,0 +1,12 @@
+[package]
+name = "auto-launch-shim"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Android shim for auto-launch (no OS autostart concept on Android)"
+
+[lib]
+name = "auto_launch"
+
+[dependencies]
+log = "0.4"

@@ -1,0 +1,13 @@
+[package]
+name = "tauri-plugin-updater-shim"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Android shim for tauri-plugin-updater (self-update is owned by ZeroTermux)"
+
+[lib]
+name = "tauri_plugin_updater"
+
+[dependencies]
+tauri-shim = { path = "../tauri-shim" }
+log = "0.4"

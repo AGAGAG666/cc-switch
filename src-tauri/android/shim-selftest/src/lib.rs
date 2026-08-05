@@ -394,3 +394,148 @@ mod tests {
         assert_eq!(out, json!("v1"));
     }
 }
+
+/// 三个非 Tauri 依赖替身的验证：`arboard`、`auto_launch`、`tauri_plugin_updater`。
+///
+/// 这里的函数体是从 cc-switch 真实源码**逐字复制**过来的，用途是证明那些
+/// 调用点在替身下原样编译。任何签名不匹配都会在此处暴露，而不是等到编译
+/// 163,634 行主工程时才发现。
+pub mod upstream_call_sites {
+    use tauri::AppHandle;
+    use tauri_plugin_updater::UpdaterExt;
+
+    /// 逐字复制 `commands/misc.rs:38` 的 `copy_text_to_clipboard`。
+    #[tauri::command]
+    pub async fn copy_text_to_clipboard(text: String) -> Result<bool, String> {
+        // Use spawn_blocking to avoid blocking the async runtime
+        // Clipboard access can block on some platforms and may have thread/loop constraints
+        tokio::task::spawn_blocking(move || {
+            let mut clipboard =
+                arboard::Clipboard::new().map_err(|e| format!("访问系统剪贴板失败: {e}"))?;
+            clipboard
+                .set_text(text)
+                .map_err(|e| format!("写入系统剪贴板失败: {e}"))?;
+            Ok(true)
+        })
+        .await
+        .map_err(|e| format!("剪贴板任务执行失败: {e}"))?
+    }
+
+    /// 逐字复制 `src/auto_launch.rs` 的 builder 链与三个操作。
+    pub fn auto_launch_call_site() -> Result<bool, String> {
+        use auto_launch::AutoLaunchBuilder;
+
+        let app_name = "CC Switch";
+        let app_path = std::path::PathBuf::from("/data/data/com.termux/files/usr/bin/cc-switch");
+
+        let auto_launch = AutoLaunchBuilder::new()
+            .set_app_name(app_name)
+            .set_app_path(&app_path.to_string_lossy())
+            .build()
+            .map_err(|e| format!("创建 AutoLaunch 失败: {e}"))?;
+
+        // 三个操作都要能调用（原版 enable/disable/is_enabled）。
+        let _ = auto_launch.enable();
+        auto_launch
+            .disable()
+            .map_err(|e| format!("禁用开机自启失败: {e}"))?;
+        auto_launch
+            .is_enabled()
+            .map_err(|e| format!("检查开机自启状态失败: {e}"))
+    }
+
+    /// 逐字复制 `commands/settings.rs:275` 的 `check_app_update_available`。
+    #[tauri::command]
+    pub async fn check_app_update_available(app: AppHandle) -> Result<Option<String>, String> {
+        let updater = app
+            .updater_builder()
+            .build()
+            .map_err(|e| format!("初始化更新器失败: {e}"))?;
+        let update = updater
+            .check()
+            .await
+            .map_err(|e| format!("检查更新失败: {e}"))?;
+        Ok(update.map(|u| u.version))
+    }
+
+    /// 复制 `install_update_and_restart` 的 updater 部分（去掉 lib.rs 顶层
+    /// 清理函数调用，那些由 lib.rs 的 android 分支提供）。
+    /// 关键是 `download` 的双闭包签名与 `install(bytes)` 必须原样编译。
+    #[tauri::command]
+    pub async fn install_update_and_restart(app: AppHandle) -> Result<bool, String> {
+        use tauri::Emitter;
+
+        let updater = app
+            .updater_builder()
+            .build()
+            .map_err(|e| format!("初始化更新器失败: {e}"))?;
+
+        let Some(update) = updater
+            .check()
+            .await
+            .map_err(|e| format!("检查更新失败: {e}"))?
+        else {
+            return Ok(false);
+        };
+
+        log::info!("开始下载应用更新: {}", update.version);
+        let progress_handle = app.clone();
+        let mut downloaded: u64 = 0;
+        let bytes = update
+            .download(
+                move |chunk_len, content_len| {
+                    downloaded = downloaded.saturating_add(chunk_len as u64);
+                    let _ = progress_handle.emit(
+                        "update-download-progress",
+                        serde_json::json!({
+                            "downloaded": downloaded,
+                            "total": content_len,
+                        }),
+                    );
+                },
+                || {},
+            )
+            .await
+            .map_err(|e| format!("下载更新失败: {e}"))?;
+
+        update
+            .install(bytes)
+            .map_err(|e| format!("安装更新失败: {e}"))?;
+        Ok(true)
+    }
+}
+
+#[cfg(test)]
+mod upstream_tests {
+    use super::upstream_call_sites as cs;
+    use tauri::AppHandle;
+
+    #[tokio::test]
+    async fn 剪贴板替身在无_termux_api_时报错而非_panic() {
+        // CI runner 上没有 termux-clipboard-set，应得到明确错误。
+        let r = cs::copy_text_to_clipboard("hello".into()).await;
+        match r {
+            Ok(true) => {} // 真机上装了 termux-api 则会成功
+            Ok(false) => panic!("不应返回 false"),
+            Err(e) => assert!(e.contains("剪贴板"), "错误信息应说明原因: {e}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn 开机自启替身如实报告不支持() {
+        // is_enabled 恒为 false；enable 报错但被忽略；disable 成功。
+        assert_eq!(cs::auto_launch_call_site().unwrap(), false);
+    }
+
+    #[tokio::test]
+    async fn 更新检查返回无更新() {
+        let app = AppHandle::noop();
+        assert_eq!(cs::check_app_update_available(app).await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn 安装更新走无更新分支返回_false() {
+        let app = AppHandle::noop();
+        assert_eq!(cs::install_update_and_restart(app).await.unwrap(), false);
+    }
+}

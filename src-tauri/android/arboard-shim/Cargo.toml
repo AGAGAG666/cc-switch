@@ -1,0 +1,12 @@
+[package]
+name = "arboard-shim"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Android/Termux shim for arboard (clipboard via termux-clipboard-set)"
+
+[lib]
+name = "arboard"
+
+[dependencies]
+log = "0.4"

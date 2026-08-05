@@ -12,6 +12,10 @@ tauri = { package = "tauri-shim", path = "../tauri-shim" }
 tauri-plugin-opener = { package = "tauri-plugin-opener-shim", path = "../tauri-plugin-opener" }
 tauri-plugin-dialog = { package = "tauri-plugin-dialog-shim", path = "../tauri-plugin-dialog" }
 tauri-plugin-store = { package = "tauri-plugin-store-shim", path = "../tauri-plugin-store" }
+tauri-plugin-updater = { package = "tauri-plugin-updater-shim", path = "../tauri-plugin-updater-shim" }
+arboard = { package = "arboard-shim", path = "../arboard-shim" }
+auto_launch = { package = "auto-launch-shim", path = "../auto-launch-shim" }
+log = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync"] }
