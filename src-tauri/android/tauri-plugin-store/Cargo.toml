@@ -1,0 +1,12 @@
+[package]
+name = "tauri-plugin-store-shim"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Android sidecar shim for tauri-plugin-store (re-exports tauri-shim::plugins)"
+
+[lib]
+name = "tauri_plugin_store"
+
+[dependencies]
+tauri-shim = { path = "../tauri-shim" }

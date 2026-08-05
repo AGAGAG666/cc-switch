@@ -1,0 +1,12 @@
+[package]
+name = "tauri-plugin-dialog-shim"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Android sidecar shim for tauri-plugin-dialog (re-exports tauri-shim::plugins)"
+
+[lib]
+name = "tauri_plugin_dialog"
+
+[dependencies]
+tauri-shim = { path = "../tauri-shim" }
