@@ -254,8 +254,18 @@ async fn serve(port: u16) -> Result<(), String> {
         Arc::new(BridgeToHost { tx: tx.clone() }),
     );
 
+    // rustls 进程级 crypto provider。桌面在 `run()` 的 setup 里装（lib.rs），
+    // Android 走 sidecar 不经过那条路径，必须在任何 TLS 握手之前自己装，
+    // 否则 ClientConfig::builder() 会 panic（no process-level CryptoProvider）。
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     // store 插件替身的落盘根目录，与桌面的 app config dir 语义对齐。
     tauri::set_store_base_dir(crate::config::get_app_config_dir());
+
+    // 与桌面 setup 同序：先读 Store 里的 app_config_dir 覆盖，再让 panic_hook
+    // 记住最终目录，保证崩溃日志和数据库落在同一个根下。
+    crate::app_store::refresh_app_config_dir_override(&app);
+    crate::panic_hook::init_app_config_dir(crate::config::get_app_config_dir());
 
     // usage_events 需要 AppHandle 才能推 `usage-log-recorded`。
     crate::usage_events::init(app.clone());

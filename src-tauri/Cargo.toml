@@ -45,13 +45,10 @@ tower = "0.4"
 tower-http = { version = "0.5", features = ["cors"] }
 hyper = { version = "1.0", features = ["full"] }
 hyper-util = { version = "0.1", features = ["tokio", "http1", "client-legacy"] }
-hyper-rustls = { version = "0.27", features = ["http1", "tls12", "ring", "webpki-tokio"] }
 http = "1"
 http-body = "1"
 http-body-util = "0.1"
 httparse = "1"
-tokio-rustls = "0.26"
-rustls = "0.23"
 webpki-roots = "0.26"
 rustls-native-certs = "0.8"
 regex = "1.10"
@@ -89,6 +86,10 @@ tauri-plugin-deep-link = "2"
 tauri-plugin-window-state = "2"
 arboard = "3.6"
 auto-launch = "0.5"
+# rustls 栈：桌面保持上游原样（default features 含 aws-lc-rs）。
+hyper-rustls = { version = "0.27", features = ["http1", "tls12", "ring", "webpki-tokio"] }
+tokio-rustls = "0.26"
+rustls = "0.23"
 reqwest = { version = "0.12", features = ["rustls-tls", "json", "stream", "socks"] }
 zip = "2.2"
 
@@ -115,6 +116,29 @@ tauri-plugin-store-shim = { path = "android/tauri-plugin-store" }
 tauri-plugin-updater-shim = { path = "android/tauri-plugin-updater-shim" }
 arboard-shim = { path = "android/arboard-shim" }
 auto-launch-shim = { path = "android/auto-launch-shim" }
+# rustls 栈：必须显式 default-features = false 以踢掉 aws-lc-rs。
+# aws-lc-sys 0.36 的 getentropy 调用要求 API >= 28，在 API 24 的 NDK sysroot 下
+# 直接编译失败（error: call to undeclared function 'getentropy'）。
+# 代码里本来就只用 rustls::crypto::ring::default_provider()，改用 ring 无行为差异，
+# 顺带省掉 aws-lc 的一大坨 C 代码体积。
+rustls = { version = "0.23", default-features = false, features = [
+    "ring",
+    "logging",
+    "std",
+    "tls12",
+] }
+tokio-rustls = { version = "0.26", default-features = false, features = [
+    "ring",
+    "logging",
+    "tls12",
+] }
+hyper-rustls = { version = "0.27", default-features = false, features = [
+    "http1",
+    "tls12",
+    "ring",
+    "webpki-tokio",
+    "logging",
+] }
 # NDK 无系统 openssl：必须关掉 reqwest 的 default-tls，显式补回
 # 默认特性里仍需要的 charset / http2，避免行为与桌面产生差异。
 reqwest = { version = "0.12", default-features = false, features = [

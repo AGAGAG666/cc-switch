@@ -57,6 +57,26 @@ jobs:
           key: ccs-android-${{ hashFiles('src-tauri/Cargo.lock') }}
           restore-keys: ccs-android-
 
+      - name: 依赖体检（openssl-sys / aws-lc-sys / 真实 tauri 都不许混入）
+        run: |
+          cargo tree --target aarch64-linux-android -e normal > tree.txt
+          fail=0
+          for bad in openssl-sys aws-lc-sys aws-lc-rs; do
+            if grep -q "$bad" tree.txt; then
+              echo "::error::$bad 被引入 android 依赖图"
+              grep -n -B6 "$bad" tree.txt | head -30
+              fail=1
+            fi
+          done
+          if grep -qE "^[^a-z]*tauri v2" tree.txt; then
+            echo "::error::真实 tauri crate 出现在 android 依赖图中"
+            grep -n "tauri v2" tree.txt | head -10
+            fail=1
+          fi
+          [ "$fail" = 0 ] || exit 1
+          echo "依赖图干净 (ok)"
+          grep -nE "ring v|rustls v" tree.txt | head -10
+
       - name: 交叉编译 sidecar
         env:
           NDK: ${{ steps.ndk.outputs.path }}
