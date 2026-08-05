@@ -1,0 +1,44 @@
+---
+name: Android Shim Probe
+
+# 单独编译 src-tauri/android 下的 tauri 替身 crate。
+# 先在宿主 target 上把类型错误清干净（shim 是纯 Rust，无原生依赖），
+# 再验证 aarch64-linux-android 交叉编译。
+on:
+  push:
+    branches: [android-sidecar]
+    paths:
+      - 'src-tauri/android/**'
+      - '.github/workflows/android-shim-probe.yml'
+  workflow_dispatch:
+
+jobs:
+  shim:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src-tauri/android
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Rust
+        run: |
+          rustup toolchain install 1.95 --profile minimal --component clippy
+          rustup default 1.95
+          rustup target add aarch64-linux-android
+          rustc --version
+
+      - name: 宿主编译（清类型错误）
+        run: cargo build --all 2>&1 | tail -200
+
+      - name: 交叉编译 aarch64-linux-android
+        run: |
+          ndk_root="$(ls -d "$ANDROID_SDK_ROOT"/ndk/* | sort -V | tail -1)"
+          TC="$ndk_root/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          export CC_aarch64_linux_android="$TC/aarch64-linux-android24-clang"
+          export AR_aarch64_linux_android="$TC/llvm-ar"
+          export CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER="$CC_aarch64_linux_android"
+          cargo build --all --target aarch64-linux-android 2>&1 | tail -100
+
+      - name: clippy（仅提示，不阻断）
+        run: cargo clippy --all 2>&1 | tail -80 || true
