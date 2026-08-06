@@ -555,6 +555,43 @@ async fn serve(port: u16, webroot: Option<PathBuf>) -> Result<(), String> {
 
     log::info!("sidecar 监听 {local}");
 
+    // Android sidecar 缺少桌面版 setup 里的 restore_proxy_state_on_startup。
+    // 桌面版在 lib.rs 的 setup hook 里检查 proxy_config.enabled，把上次开着的
+    // 路由重新接管；sidecar 没有走那条路，导致每次重启都要在 UI 里手动开一遍。
+    // 这里补上等效逻辑：先取 AppState，再按 enabled 列逐 app 恢复接管状态。
+    {
+        let state = shared.app.state::<crate::store::AppState>();
+        let apps_to_restore: Vec<&'static str> = {
+            let db = &state.db;
+            const STARTUP_APPS: [&str; 4] = ["claude", "codex", "gemini", "grokbuild"];
+            let mut out = Vec::new();
+            for app_type in STARTUP_APPS {
+                if db
+                    .get_proxy_config_for_app(app_type)
+                    .await
+                    .is_ok_and(|cfg| cfg.enabled)
+                {
+                    out.push(app_type);
+                }
+            }
+            out
+        };
+        if apps_to_restore.is_empty() {
+            log::debug!("[sidecar] 启动时无需恢复代理状态");
+        } else {
+            log::info!("[sidecar] 恢复代理状态，应用列表: {apps_to_restore:?}");
+            for app_type in apps_to_restore {
+                match state.proxy_service.set_takeover_for_app(app_type, true).await {
+                    Ok(()) => log::info!("[sidecar] ✓ 已恢复 {app_type} 代理接管"),
+                    Err(e) => {
+                        log::error!("[sidecar] ✗ 恢复 {app_type} 代理失败: {e}");
+                        let _ = state.proxy_service.set_takeover_for_app(app_type, false).await;
+                    }
+                }
+            }
+        }
+    }
+
     axum::serve(listener, router)
         .await
         .map_err(|e| format!("HTTP 服务退出: {e}"))

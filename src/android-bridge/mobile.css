@@ -250,6 +250,26 @@ body {
  * 压成一条竖线（弹窗标题栏、列表项最常见）。图标是固定尺寸装饰元素，一律
  * 退出收缩。只挑 `.lucide`，避开使用统计页 recharts 那些需要自适应的 svg。
  */
+/* ── 触屏拖拽 ─────────────────────────────────────────────── */
+/*
+ * @dnd-kit 的 PointerSensor 监听 pointer 事件来实现拖拽。触屏时
+ * 浏览器默认把 touchstart 用于页面滚动，pointermove 送不到 dnd-kit，
+ * 拖拽完全不响应。drag handle 本体加 touch-action: none 告诉浏览器
+ * 「这里不参与滚动」，PointerSensor 才能正确接管触屏拖拽。
+ * aria-label 匹配 useDragSort.ts 里的 t("provider.dragHandle")，
+ * 中英文 build 都有效；class 匹配做双重保险。
+ */
+/* aria-label 值因语言而异（en/zh/zh-TW/ja），cursor-grab 类更稳定 */
+button[aria-label="Drag to reorder"],
+button[aria-label="拖拽排序"],
+button[aria-label="拖曳排序"],
+button[aria-label*="reorder"],
+button.cursor-grab {
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 svg.lucide {
   flex: none;
 }
