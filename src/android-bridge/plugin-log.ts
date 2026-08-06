@@ -26,22 +26,62 @@ export function recentFrontendLogs(): string[] {
   return [...ring];
 }
 
-export async function error(message: string): Promise<void> {
-  record("error", message);
+/**
+ * 上游按 `error(message, { file: "frontend" })` 调用（见 lib/frontendLogger.ts），
+ * 与真实插件的 `LogOptions` 第二参一致，这里把它并进行首以便排查来源。
+ */
+export interface LogOptions {
+  file?: string;
+  line?: number;
+  keyValues?: Record<string, string | undefined>;
 }
 
-export async function warn(message: string): Promise<void> {
-  record("warn", message);
+function withOrigin(message: string, options?: LogOptions): string {
+  if (!options) return message;
+  const bits = [options.file, options.line != null ? String(options.line) : undefined]
+    .filter(Boolean)
+    .join(":");
+  const kv = options.keyValues
+    ? Object.entries(options.keyValues)
+        .filter(([, v]) => v != null)
+        .map(([k, v]) => `${k}=${v}`)
+        .join(" ")
+    : "";
+  const suffix = [bits, kv].filter(Boolean).join(" ");
+  return suffix ? `${message} (${suffix})` : message;
 }
 
-export async function info(message: string): Promise<void> {
-  record("info", message);
+export async function error(
+  message: string,
+  options?: LogOptions,
+): Promise<void> {
+  record("error", withOrigin(message, options));
 }
 
-export async function debug(message: string): Promise<void> {
-  record("debug", message);
+export async function warn(
+  message: string,
+  options?: LogOptions,
+): Promise<void> {
+  record("warn", withOrigin(message, options));
 }
 
-export async function trace(message: string): Promise<void> {
-  record("trace", message);
+export async function info(
+  message: string,
+  options?: LogOptions,
+): Promise<void> {
+  record("info", withOrigin(message, options));
+}
+
+export async function debug(
+  message: string,
+  options?: LogOptions,
+): Promise<void> {
+  record("debug", withOrigin(message, options));
+}
+
+export async function trace(
+  message: string,
+  options?: LogOptions,
+): Promise<void> {
+  record("trace", withOrigin(message, options));
 }
