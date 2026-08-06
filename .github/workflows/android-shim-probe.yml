@@ -38,7 +38,9 @@ jobs:
       - name: 宏展开自测（真实命令形态 + 运行断言）
         run: |
           set -o pipefail
-          cargo test --all -- --nocapture 2>&1 | tail -120
+          # --no-fail-fast：一个 crate 的测试挂掉不能掩盖后面 crate 的结果
+          # （曾经因此看不到 tauri-shim-macros 的用例跑没跑）。
+          cargo test --all --no-fail-fast -- --nocapture 2>&1 | tail -260
 
       - name: 交叉编译 aarch64-linux-android
         run: |
