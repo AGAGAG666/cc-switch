@@ -274,6 +274,52 @@ svg.lucide {
   flex: none;
 }
 
+/* 图标底座：桌面用 `w-10 h-10 rounded-full` 之类的固定方块装图标，作为 flex 子项
+   同样会被压窄 → 圆变竖椭圆、图标被裁。装饰性底座一律退出收缩。 */
+[class*="rounded-full"]:has(> svg.lucide) {
+  flex: none;
+}
+
+/* ── 5.1 纯图标按钮必须保持正方形 ─────────────────────────── */
+/*
+ * 上一版只把高度抬到 40px（`button { min-height: 40px }`），宽度仍是桌面尺寸：
+ *   - `size="icon"` 是 h-9 w-9  → 36×40
+ *   - 会话目录弹窗的关闭键只有 `rounded-full p-1.5` → 28×40
+ *   - 搜索框内的清空键是 `size-6` → 24×40
+ * 竖长方形的悬浮底色/圆形底色被拉成竖椭圆，看上去就是「叉号图标被压过」。
+ * 上一版按 `h-6/h-7/h-8` 枚举，漏掉了 h-9 与完全没有高度类的这几种，
+ * 所以改成按结构判定：子节点只有一个图标的按钮就是图标按钮。
+ */
+@media (hover: none) and (pointer: coarse) {
+  button:not([role="switch"]):has(> svg:only-child),
+  [role="button"]:has(> svg:only-child),
+  a[href]:has(> svg:only-child) {
+    min-width: 40px;
+    min-height: 40px;
+    /* 父容器被前面的 `min-width: 0` 放开后，按钮会被同行文字挤窄，
+       图标（已 flex:none）随即溢出被裁。图标按钮一律不参与收缩。 */
+    flex: none;
+  }
+
+  /*
+   * 绝对定位的图标按钮是例外：位置由 `top-1/2 -translate-y-1/2` 决定，
+   * 尺寸本来就是正方形（输入框内的清空 ✕、弹窗标题栏右上角的关闭 ✕）。
+   * 抬到 40px 会盖住输入框边框、把标题栏顶高。保持设计尺寸即是正方形，
+   * 触控热区改用伪元素向外扩 8px 补足，不影响任何布局。
+   */
+  button[class*="absolute"]:has(> svg:only-child),
+  [role="button"][class*="absolute"]:has(> svg:only-child) {
+    min-width: 0;
+    min-height: 0;
+  }
+  button[class*="absolute"]:has(> svg:only-child)::after,
+  [role="button"][class*="absolute"]:has(> svg:only-child)::after {
+    content: "";
+    position: absolute;
+    inset: -8px;
+  }
+}
+
 /* ── 6. 窄屏补充 ───────────────────────────────────────────── */
 @media (max-width: 640px) {
   /* 桌面表格/面板惯用 `min-w-[NNNpx]` 撑最小宽度，窄屏一律解除，
