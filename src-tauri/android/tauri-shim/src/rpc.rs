@@ -53,35 +53,21 @@ impl RpcContext {
 
 /// 从 JSON body 取出并反序列化一个命令参数。
 ///
-/// 缺键时传 `Null`，让 `Option<T>` 自然得到 `None`——与原版 IPC 行为一致。
-/// 同时兼容 snake_case 兜底，避免前端个别调用点用了下划线写法。
-pub fn take_arg<T: serde::de::DeserializeOwned>(args: &Value, key: &str) -> Result<T, String> {
-    let raw = args
-        .get(key)
-        .or_else(|| {
-            let snake = to_snake(key);
-            if snake == key {
-                None
-            } else {
-                args.get(&snake)
-            }
-        })
+/// `keys` 由宏按优先级给出：第一个是 tauri 语义下的 camelCase 键名（前端实际
+/// 发送的形态），其后是 Rust 字面参数名作兜底。两者相同时只查一次。
+///
+/// 全部候选键都缺失时传 `Null`，让 `Option<T>` 自然得到 `None`——与原版 IPC
+/// 行为一致。注意"键存在但值为 null"与"键不存在"在这里等价，这也和原版一致
+/// （前端把 `undefined` 序列化成缺键，把 `null` 序列化成 null）。
+pub fn take_arg<T: serde::de::DeserializeOwned>(args: &Value, keys: &[&str]) -> Result<T, String> {
+    let raw = keys
+        .iter()
+        .find_map(|k| args.get(*k))
+        .filter(|v| !v.is_null())
         .cloned()
         .unwrap_or(Value::Null);
+    let key = keys.first().copied().unwrap_or("");
     serde_json::from_value(raw).map_err(|e| format!("参数 {key} 解析失败: {e}"))
-}
-
-fn to_snake(s: &str) -> String {
-    let mut out = String::with_capacity(s.len() + 4);
-    for ch in s.chars() {
-        if ch.is_ascii_uppercase() {
-            out.push('_');
-            out.extend(ch.to_lowercase());
-        } else {
-            out.push(ch);
-        }
-    }
-    out
 }
 
 /// 命令错误统一转字符串（原版错误类型有 `String` 和 `AppError` 两种，都是 Display）。
@@ -144,5 +130,72 @@ impl Handlers {
             .get(name)
             .ok_or_else(|| format!("未知命令: {name}"))?;
         handler(ctx, args).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::take_arg;
+    use serde_json::json;
+
+    #[test]
+    fn 首选键优先于兜底键() {
+        let args = json!({ "appType": "codex", "app_type": "claude" });
+        let v: String = take_arg(&args, &["appType", "app_type"]).unwrap();
+        assert_eq!(v, "codex");
+    }
+
+    #[test]
+    fn 首选键缺失时回落到兜底键() {
+        let args = json!({ "app_type": "claude" });
+        let v: String = take_arg(&args, &["appType", "app_type"]).unwrap();
+        assert_eq!(v, "claude");
+    }
+
+    #[test]
+    fn 首选键为_null_时跳到兜底键() {
+        // 关键：前端漏发字段时序列化成 null，不能因此挡住兜底键。
+        let args = json!({ "appType": null, "app_type": "claude" });
+        let v: String = take_arg(&args, &["appType", "app_type"]).unwrap();
+        assert_eq!(v, "claude");
+    }
+
+    #[test]
+    fn 全部候选键缺失时_option_得到_none() {
+        let args = json!({});
+        let v: Option<String> = take_arg(&args, &["appType", "app_type"]).unwrap();
+        assert_eq!(v, None);
+        let v: Option<String> = take_arg(&json!({ "appType": null }), &["appType"]).unwrap();
+        assert_eq!(v, None);
+    }
+
+    #[test]
+    fn 必填参数缺失时错误信息用首选键() {
+        let err = take_arg::<String>(&json!({}), &["appType", "app_type"]).unwrap_err();
+        assert!(err.starts_with("参数 appType 解析失败"), "{err}");
+    }
+
+    #[test]
+    fn 类型不符时报错而非_panic() {
+        let err = take_arg::<String>(&json!({ "appType": 7 }), &["appType"]).unwrap_err();
+        assert!(err.contains("参数 appType 解析失败"), "{err}");
+    }
+
+    #[test]
+    fn 重复候选键不影响结果() {
+        // 已是 camelCase 的参数名转换后与字面名相同，宏会传两个一样的键。
+        let v: String = take_arg(&json!({ "providerId": "p" }), &["providerId", "providerId"])
+            .unwrap();
+        assert_eq!(v, "p");
+    }
+
+    #[test]
+    fn 结构体入参正常反序列化() {
+        #[derive(serde::Deserialize, PartialEq, Debug)]
+        struct P {
+            id: String,
+        }
+        let v: P = take_arg(&json!({ "payload": { "id": "x" } }), &["payload"]).unwrap();
+        assert_eq!(v, P { id: "x".into() });
     }
 }
