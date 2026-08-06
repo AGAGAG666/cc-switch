@@ -162,6 +162,45 @@ pub mod commands {
     #[tauri::command]
     pub fn ping() {}
 
+    /// 形态 14：**无 `rename_all`** + snake_case 参数名。这是原版里 46 个命令
+    /// 的形态（对照 `commands/misc.rs` 的 `get_common_config_snippet`）。
+    /// tauri 2.x 的参数名默认就是 camelCase，前端 `config.ts` 发的是
+    /// `{ appType }`，所以宏必须无条件把 `app_type` 转成 `appType`。
+    /// 这条曾经取不到值，报"参数 app_type 解析失败: invalid type: null"。
+    #[tauri::command]
+    pub async fn get_common_config_snippet(app_type: String) -> Result<String, String> {
+        if app_type.is_empty() {
+            return Err("appType 为空".into());
+        }
+        Ok(format!("snippet-for-{app_type}"))
+    }
+
+    /// 形态 15：无 `rename_all` + 多个 snake_case 参数 + `Option`。
+    /// 对照 `get_usage_summary(start_date, end_date, app_type, provider_name)`。
+    #[tauri::command]
+    pub async fn get_usage_summary(
+        start_date: String,
+        end_date: String,
+        app_type: Option<String>,
+        provider_name: Option<String>,
+    ) -> Result<String, String> {
+        Ok(format!(
+            "{start_date}~{end_date}|{}|{}",
+            app_type.unwrap_or_else(|| "all".into()),
+            provider_name.unwrap_or_else(|| "all".into())
+        ))
+    }
+
+    /// 形态 16：前导下划线参数名。对照
+    /// `delete_mcp_server_in_config(_app: String, ...)`，前端 `mcp.ts` 发 `app`。
+    #[tauri::command]
+    pub async fn delete_mcp_server_in_config(
+        _app: String,
+        server_id: String,
+    ) -> Result<String, String> {
+        Ok(format!("{_app}/{server_id}"))
+    }
+
     /// 形态 13：复杂结构体入参（serde 反序列化）。
     #[tauri::command]
     #[allow(non_snake_case)]
@@ -204,6 +243,9 @@ pub fn build() -> (AppHandle, tauri::rpc::Handlers) {
         commands::store_roundtrip,
         commands::ping,
         commands::upsert_provider,
+        commands::get_common_config_snippet,
+        commands::get_usage_summary,
+        commands::delete_mcp_server_in_config,
     ];
     (app, handlers)
 }
@@ -235,7 +277,7 @@ mod tests {
     #[tokio::test]
     async fn 全部命令都注册了() {
         let (_, handlers) = build();
-        assert_eq!(handlers.len(), 13, "names={:?}", handlers.names());
+        assert_eq!(handlers.len(), 16, "names={:?}", handlers.names());
         // 命令名必须是原函数名，不能带 __rpc_ 前缀。
         assert!(handlers.names().contains(&"get_provider"));
         assert!(handlers.names().iter().all(|n| !n.starts_with("__rpc_")));
@@ -392,6 +434,82 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(out, json!("v1"));
+    }
+
+    // ── camelCase 参数名回归（真机报过 "参数 app_type 解析失败"）─────────
+
+    #[tokio::test]
+    async fn 无_rename_all_的_snake_case_参数也按_camelcase_取值() {
+        // 前端实际发送的形态。修复前这里必然失败。
+        let out = call("get_common_config_snippet", json!({ "appType": "codex" }))
+            .await
+            .expect("应成功");
+        assert_eq!(out, json!("snippet-for-codex"));
+    }
+
+    #[tokio::test]
+    async fn snake_case_键作为兜底仍然可用() {
+        // 个别调用点直接写下划线时不应回归。
+        let out = call("get_common_config_snippet", json!({ "app_type": "claude" }))
+            .await
+            .expect("应成功");
+        assert_eq!(out, json!("snippet-for-claude"));
+    }
+
+    #[tokio::test]
+    async fn 参数缺失时报错信息用_camelcase_主键() {
+        let err = call("get_common_config_snippet", json!({}))
+            .await
+            .unwrap_err();
+        assert!(
+            err.contains("参数 appType 解析失败"),
+            "错误信息应指向前端看得懂的键名: {err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn 多个_snake_case_参数与_option_混用() {
+        let out = call(
+            "get_usage_summary",
+            json!({
+                "startDate": "2026-01-01",
+                "endDate": "2026-01-31",
+                "appType": "codex"
+                // providerName 故意缺省
+            }),
+        )
+        .await
+        .expect("应成功");
+        assert_eq!(out, json!("2026-01-01~2026-01-31|codex|all"));
+    }
+
+    #[tokio::test]
+    async fn 前导下划线参数名对应前端不带下划线的键() {
+        let out = call(
+            "delete_mcp_server_in_config",
+            json!({ "app": "codex", "serverId": "s1" }),
+        )
+        .await
+        .expect("应成功");
+        assert_eq!(out, json!("codex/s1"));
+    }
+
+    #[tokio::test]
+    async fn 显式_null_与缺键等价() {
+        // 前端 JSON.stringify 会把 undefined 丢掉、把 null 保留，
+        // 两者在原版 IPC 下对 Option<T> 都是 None。
+        let out = call(
+            "get_usage_summary",
+            json!({
+                "startDate": "a",
+                "endDate": "b",
+                "appType": null,
+                "providerName": null,
+            }),
+        )
+        .await
+        .expect("应成功");
+        assert_eq!(out, json!("a~b|all|all"));
     }
 }
 

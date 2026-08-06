@@ -20,8 +20,9 @@ enum Injected {
     AppHandle,
     /// `Window`
     Window,
-    /// 普通参数 -> 从 JSON body 反序列化
-    Json { key: String, ty: Type },
+    /// 普通参数 -> 从 JSON body 反序列化。`key` 是 tauri 语义下的
+    /// camelCase 键名，`raw` 是 Rust 字面参数名（兜底键）。
+    Json { key: String, raw: String, ty: Type },
 }
 
 /// 取类型路径的最后一段标识符名。
@@ -46,32 +47,52 @@ fn state_inner_type(ty: &Type) -> Option<Type> {
     })
 }
 
-/// snake_case -> camelCase，复刻 `rename_all = "camelCase"`。
+/// snake_case -> lowerCamelCase，复刻 tauri 对命令参数名的默认改写。
+///
+/// tauri 2.x 无论是否写 `rename_all`，都用 heck 的 `to_lower_camel_case`
+/// 处理命令参数名（`rename_all = "camelCase"` 只是把默认值写明）。所以这里
+/// 必须对全部参数无条件转换，否则 `app_type` 这类参数在前端发来的
+/// `appType` 里永远取不到值。
+///
+/// 按下划线切词、丢弃空词、首词全小写、其余词首字母大写。cc-switch 的 97 个
+/// 唯一参数名里没有连续大写、下划线接大写、字母接数字的形态，故该简化实现与
+/// heck 逐字节等价（已全量核对）。前导下划线会被丢弃，这正是
+/// `delete_mcp_server_in_config` 的 `_app` 能对上前端 `app` 的原因。
 fn to_camel(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
-    let mut upper_next = false;
-    for ch in s.chars() {
-        if ch == '_' {
-            upper_next = true;
-        } else if upper_next {
-            out.extend(ch.to_uppercase());
-            upper_next = false;
+    for word in s.split('_').filter(|w| !w.is_empty()) {
+        let mut chars = word.chars();
+        let Some(first) = chars.next() else { continue };
+        if out.is_empty() {
+            out.extend(first.to_lowercase());
         } else {
-            out.push(ch);
+            out.extend(first.to_uppercase());
         }
+        out.push_str(chars.as_str());
     }
     out
 }
 
 #[proc_macro_attribute]
 pub fn command(attr: TokenStream, item: TokenStream) -> TokenStream {
-    // 原版只用到 `rename_all = "camelCase"` 这一种参数形态（19 处）。
-    let rename_camel = attr.to_string().contains("camelCase");
+    // 原版只出现空属性和 `rename_all = "camelCase"` 两种形态，二者语义相同
+    // （camelCase 就是 tauri 的默认值），故属性内容无需参与参数名推导。
+    // 真出现 `rename_all = "snake_case"` 这类反向改写时直接编译报错，
+    // 避免静默按 camelCase 展开、留下运行期取不到参数的暗坑。
+    let attr = attr.to_string();
+    if attr.contains("rename_all") && !attr.contains("camelCase") {
+        return syn::Error::new(
+            proc_macro2::Span::call_site(),
+            "tauri-shim 只支持 rename_all = \"camelCase\"（即 tauri 默认值）",
+        )
+        .to_compile_error()
+        .into();
+    }
     let func = parse_macro_input!(item as ItemFn);
-    expand_command(func, rename_camel)
+    expand_command(func)
 }
 
-fn expand_command(func: ItemFn, rename_camel: bool) -> TokenStream {
+fn expand_command(func: ItemFn) -> TokenStream {
     let name = func.sig.ident.clone();
     let is_async = func.sig.asyncness.is_some();
     let vis = func.vis.clone();
@@ -117,10 +138,11 @@ fn expand_command(func: ItemFn, rename_camel: bool) -> TokenStream {
                         .into();
                 };
                 let raw = pat_ident.ident.to_string();
-                // 未加 rename_all 的命令直接用字面参数名（原版靠 camelCase 参数名 +
-                // #[allow(non_snake_case)] 对齐前端），加了的按 camelCase 转换。
-                let key = if rename_camel { to_camel(&raw) } else { raw };
-                injected.push(Injected::Json { key, ty });
+                // 主键按 tauri 语义转 camelCase；字面参数名作兜底，容纳前端个别
+                // 直接写下划线的调用点。已是 camelCase 的参数名转换后不变，
+                // 两个键会重合，take_arg 去重后只查一次。
+                let key = to_camel(&raw);
+                injected.push(Injected::Json { key, raw, ty });
             }
         }
     }
@@ -140,8 +162,8 @@ fn expand_command(func: ItemFn, rename_camel: bool) -> TokenStream {
             Injected::Window => bindings.push(quote! {
                 let #bind = __ctx.window();
             }),
-            Injected::Json { key, ty } => bindings.push(quote! {
-                let #bind: #ty = ::tauri::rpc::take_arg(&__args, #key)?;
+            Injected::Json { key, raw, ty } => bindings.push(quote! {
+                let #bind: #ty = ::tauri::rpc::take_arg(&__args, &[#key, #raw])?;
             }),
         }
         call_args.push(quote!(#bind));
@@ -217,4 +239,52 @@ pub fn generate_handler(input: TokenStream) -> TokenStream {
         ])
     }
     .into()
+}
+
+/// `to_camel` 是整个参数取值链路的唯一键名来源，改错会让 46 个命令静默取不到
+/// 参数，所以在这里把与 heck `to_lower_camel_case` 的等价性钉死。
+/// 用例全部取自 cc-switch 真实参数名。
+#[cfg(test)]
+mod tests {
+    use super::to_camel;
+
+    #[test]
+    fn snake_case_becomes_lower_camel() {
+        assert_eq!(to_camel("app_type"), "appType");
+        assert_eq!(to_camel("provider_id"), "providerId");
+        assert_eq!(to_camel("access_key_id"), "accessKeyId");
+        assert_eq!(to_camel("wsl_shell_by_tool"), "wslShellByTool");
+        assert_eq!(to_camel("team_organization_id"), "teamOrganizationId");
+        assert_eq!(to_camel("cache_creation_cost"), "cacheCreationCost");
+    }
+
+    #[test]
+    fn single_word_stays_lowercase() {
+        assert_eq!(to_camel("enabled"), "enabled");
+        assert_eq!(to_camel("id"), "id");
+    }
+
+    #[test]
+    fn already_camel_is_idempotent() {
+        // 前端本就发 camelCase；若某个命令的 Rust 参数名已是 camelCase，
+        // 转换必须是恒等映射，否则主键会跑偏。
+        for s in ["providerId", "appType", "modelId"] {
+            assert_eq!(to_camel(s), s);
+            assert_eq!(to_camel(&to_camel(s)), s);
+        }
+    }
+
+    #[test]
+    fn leading_underscore_is_dropped() {
+        // `delete_mcp_server_in_config(_app: String)` 对应前端 mcp.ts 发的 `app`。
+        assert_eq!(to_camel("_app"), "app");
+        assert_eq!(to_camel("_state"), "state");
+    }
+
+    #[test]
+    fn empty_words_are_skipped() {
+        assert_eq!(to_camel("a__b"), "aB");
+        assert_eq!(to_camel("__"), "");
+        assert_eq!(to_camel(""), "");
+    }
 }
