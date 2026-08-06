@@ -59,6 +59,7 @@ import { cn } from "@/lib/utils";
 import {
   isWindows,
   isLinux,
+  isAndroid,
   DRAG_REGION_ATTR,
   DRAG_REGION_STYLE,
 } from "@/lib/platform";
@@ -135,7 +136,8 @@ interface SyncStatusUpdatedPayload {
   error?: string;
 }
 
-const DEFAULT_DRAG_BAR_HEIGHT = isWindows() || isLinux() ? 0 : 28; // px
+const DEFAULT_DRAG_BAR_HEIGHT =
+  isWindows() || isLinux() || isAndroid() ? 0 : 28; // px
 const HEADER_HEIGHT = 64; // px
 
 const STORAGE_KEY = "cc-switch-last-app";

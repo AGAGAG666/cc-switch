@@ -1,0 +1,138 @@
+/*
+ * Android/触屏适配覆盖层。
+ *
+ * 前端本体是桌面 React 应用，只在窄屏上有两类硬伤：
+ *   1. 大量无响应式断点的 `grid-cols-N`（N>=2）在 360~430dp 上把每列压到不可读；
+ *   2. 桌面尺寸的点击目标（h-6/h-7 图标按钮、紧凑输入框）低于 44px 触控下限。
+ * 这里只处理这两类 + 溢出/安全区，不改变任何交互逻辑。
+ *
+ * 由 vite 的 android 模式在 index.html 的 <head> 末尾内联注入，
+ * 因此与 Tailwind 同特异性时本文件胜出。
+ */
+
+:root {
+  /* 状态栏/挖孔安全区。ZeroTermux 侧用 edge-to-edge，必须自己躲。 */
+  --ccs-safe-top: env(safe-area-inset-top, 0px);
+  --ccs-safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+html,
+body {
+  overscroll-behavior: none; /* 禁掉下拉刷新式回弹，避免误触 */
+  -webkit-tap-highlight-color: transparent;
+}
+
+body {
+  padding-top: var(--ccs-safe-top);
+  padding-bottom: var(--ccs-safe-bottom);
+}
+
+/* h-screen 在移动浏览器上会被地址栏/输入法搞错，dvh 才是实际可视高度 */
+.h-screen {
+  height: 100dvh;
+}
+
+/* ── 1. 窄屏栅格收敛 ───────────────────────────────────────── */
+@media (max-width: 640px) {
+  /* 3 列及以上一律降到 2 列；6 列以上（日期/星期选择器一类）降到 4 列 */
+  .grid-cols-3,
+  .grid-cols-4,
+  .grid-cols-5 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .grid-cols-6,
+  .grid-cols-7,
+  .grid-cols-8,
+  .grid-cols-10 {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  /* 2 列里放「标签 + 输入框」的表单在窄屏必须堆叠 */
+  form .grid-cols-2,
+  .grid-cols-2:has(> label),
+  .grid-cols-2:has(input),
+  .grid-cols-2:has(textarea),
+  .grid-cols-2:has(select) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* 桌面固定宽度的抽屉/侧栏在 400dp 上会横向溢出 */
+  .w-64,
+  .w-72,
+  .w-80,
+  .w-96 {
+    width: 100%;
+    max-width: 100%;
+  }
+  .min-w-\[640px\],
+  .min-w-\[720px\],
+  .min-w-\[768px\] {
+    min-width: 0;
+  }
+
+  /* 弹窗留出边距，别贴边 */
+  [role="dialog"] {
+    max-width: calc(100vw - 24px);
+    max-height: calc(100dvh - 24px);
+  }
+}
+
+/* 日历/星期这类语义上必须保持 7 列的，别被上面的规则打散 */
+@media (max-width: 640px) {
+  [data-ccs-keep-cols],
+  [role="grid"] .grid-cols-7 {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+  }
+}
+
+/* ── 2. 触控目标 ───────────────────────────────────────────── */
+@media (hover: none) and (pointer: coarse) {
+  button,
+  [role="button"],
+  [role="tab"],
+  [role="menuitem"],
+  a[href],
+  select,
+  summary {
+    min-height: 40px;
+  }
+  /* 图标按钮是正方形，同时抬高宽度否则视觉变形 */
+  button.h-6,
+  button.h-7,
+  button.h-8,
+  [role="button"].h-6,
+  [role="button"].h-7,
+  [role="button"].h-8 {
+    min-height: 40px;
+    min-width: 40px;
+  }
+  /* iOS/Android 上 <16px 的输入框会触发自动放大 */
+  input,
+  textarea,
+  select {
+    font-size: max(16px, 1em);
+    min-height: 40px;
+  }
+  input[type="checkbox"],
+  input[type="radio"] {
+    min-height: 0;
+    width: 18px;
+    height: 18px;
+  }
+  /* 只在 hover 下才出现的操作条，触屏没有 hover，直接常显 */
+  .group:not(:hover) .group-hover\:opacity-100,
+  .group .group-hover\:opacity-100 {
+    opacity: 1;
+  }
+  .group .group-hover\:visible {
+    visibility: visible;
+  }
+}
+
+/* ── 3. 滚动条 ─────────────────────────────────────────────── */
+/* 桌面版给了 8~10px 的自定义滚动条，触屏上是纯浪费横向空间 */
+@media (pointer: coarse) {
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@/*": ["src/*"],
+      "@tauri-apps/api/core": ["src/android-bridge/core.ts"],
+      "@tauri-apps/api/event": ["src/android-bridge/event.ts"],
+      "@tauri-apps/api/app": ["src/android-bridge/app.ts"],
+      "@tauri-apps/api/path": ["src/android-bridge/path.ts"],
+      "@tauri-apps/api/window": ["src/android-bridge/window.ts"],
+      "@tauri-apps/plugin-process": ["src/android-bridge/plugin-process.ts"],
+      "@tauri-apps/plugin-updater": ["src/android-bridge/plugin-updater.ts"],
+      "@tauri-apps/plugin-dialog": ["src/android-bridge/plugin-dialog.ts"],
+      "@tauri-apps/plugin-log": ["src/android-bridge/plugin-log.ts"]
+    }
+  },
+  "include": ["src/**/*"]
+}

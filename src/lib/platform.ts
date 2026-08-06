@@ -18,6 +18,21 @@ export const isWindows = (): boolean => {
   }
 };
 
+/**
+ * Android WebView（ZeroTermux 内嵌移植版）。
+ *
+ * 这里必须放在 isLinux 之前理解：Android 的 UA 同时含 "Linux"，但它既没有窗口
+ * 装饰也没有拖动区，所有「桌面窗口」相关的 UI 都应该按 0 处理。
+ */
+export const isAndroid = (): boolean => {
+  try {
+    const ua = navigator.userAgent || "";
+    return /android/i.test(ua);
+  } catch {
+    return false;
+  }
+};
+
 export const isLinux = (): boolean => {
   try {
     const ua = navigator.userAgent || "";
@@ -37,7 +52,7 @@ export const isLinux = (): boolean => {
 // 这些常量设计为通过 JSX 属性 spread 消费（`{...DRAG_REGION_ATTR}`），
 // 因为 `data-tauri-drag-region` 是 wry 侧的 attribute 存在性检测，必须
 // 完全不渲染属性才算禁用；空字符串或 "false" 仍会触发。
-export const DRAG_REGION_ENABLED = !isLinux();
+export const DRAG_REGION_ENABLED = !isLinux() && !isAndroid();
 
 export const DRAG_REGION_ATTR: Record<string, unknown> = DRAG_REGION_ENABLED
   ? { "data-tauri-drag-region": true }

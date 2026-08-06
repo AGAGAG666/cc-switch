@@ -1,0 +1,113 @@
+# Android WebView 前端产物构建。
+#
+# 与桌面构建的差异只有 `CCS_TARGET=android`：vite 把 9 个 `@tauri-apps/*`
+# 模块 alias 到 `src/android-bridge/`，并注入移动端 CSS 覆盖层。
+# 产物是纯静态 dist（`base: "./"`），可直接塞进 ZeroTermux 的 assets。
+name: Android Frontend Build
+
+on:
+  push:
+    branches: [android-sidecar]
+    paths:
+      - "src/**"
+      - "package.json"
+      - "pnpm-lock.yaml"
+      - "vite.config.ts"
+      - "tsconfig*.json"
+      - "tailwind.config.cjs"
+      - "postcss.config.cjs"
+      - ".github/workflows/android-frontend-build.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: android-frontend-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build Android dist
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.12.3
+          run_install: false
+
+      - name: Get pnpm store directory
+        id: pnpm-store
+        shell: bash
+        run: echo "path=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
+
+      - name: Cache pnpm store
+        uses: actions/cache@v5
+        with:
+          path: ${{ steps.pnpm-store.outputs.path }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: TypeScript type check (android alias)
+        run: pnpm typecheck:android
+
+      - name: Build renderer (android)
+        run: pnpm build:android
+
+      - name: Verify dist
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f dist/index.html || { echo "::error::dist/index.html 缺失"; exit 1; }
+
+          echo "=== dist 结构 ==="
+          find dist -type f | sort
+
+          echo "=== 体积 ==="
+          du -sh dist
+          du -sb dist | cut -f1
+
+          # 静态资源必须是相对路径，否则 WebView 用 file:// 或 assets 协议加载会 404。
+          if grep -qE '(src|href)="/' dist/index.html; then
+            echo "::error::dist/index.html 存在绝对路径引用（base 配置失效）"
+            grep -nE '(src|href)="/' dist/index.html
+            exit 1
+          fi
+
+          # 真实 tauri IPC 不该出现在 android 产物里。
+          if grep -rl "__TAURI_INTERNALS__" dist >/dev/null 2>&1; then
+            echo "::error::产物里仍引用 __TAURI_INTERNALS__，alias 未生效"
+            grep -rl "__TAURI_INTERNALS__" dist
+            exit 1
+          fi
+
+          # 桥接层必须在（sidecar 握手 + SSE）。
+          if ! grep -rql "__CCS_SIDECAR__" dist; then
+            echo "::error::产物里找不到 __CCS_SIDECAR__，android-bridge 未打进去"
+            exit 1
+          fi
+
+          # 移动端覆盖层必须注入。
+          if ! grep -q "ccs-android-mobile" dist/index.html; then
+            echo "::error::index.html 未注入移动端 CSS 覆盖层"
+            exit 1
+          fi
+
+          echo "=== index.html ==="
+          cat dist/index.html
+
+      - name: Upload dist
+        uses: actions/upload-artifact@v4
+        with:
+          name: ccs-android-dist
+          path: dist/
+          if-no-files-found: error

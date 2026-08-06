@@ -273,7 +273,12 @@ async fn serve(port: u16) -> Result<(), String> {
     init_states(&app)?;
 
     // `generate_handler!` 替身直接展开为 `Handlers::from_pairs(vec![..])`。
-    let handlers: Handlers = crate::cc_switch_generate_handler!();
+    let mut handlers: Handlers = crate::cc_switch_generate_handler!();
+    // Android 专属补丁命令：桌面这两条能力由 Tauri 运行时内建提供，命令表里没有。
+    handlers.extend(tauri::generate_handler![
+        crate::commands::get_app_version,
+        crate::commands::get_home_dir,
+    ]);
     log::info!("已注册 {} 条命令", handlers.len());
 
     let token = new_token();
