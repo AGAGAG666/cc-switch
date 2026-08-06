@@ -56,14 +56,14 @@ impl RpcContext {
 /// `keys` 由宏按优先级给出：第一个是 tauri 语义下的 camelCase 键名（前端实际
 /// 发送的形态），其后是 Rust 字面参数名作兜底。两者相同时只查一次。
 ///
-/// 全部候选键都缺失时传 `Null`，让 `Option<T>` 自然得到 `None`——与原版 IPC
-/// 行为一致。注意"键存在但值为 null"与"键不存在"在这里等价，这也和原版一致
-/// （前端把 `undefined` 序列化成缺键，把 `null` 序列化成 null）。
+/// "键存在但值为 null"一律等同于"键不存在"：既会继续尝试后面的候选键，也会在
+/// 全部候选键都落空时传 `Null`，让 `Option<T>` 自然得到 `None`。这与原版 IPC
+/// 一致——前端把 `undefined` 序列化成缺键、把 `null` 序列化成 null，两者在原版
+/// 里对 `Option<T>` 都是 `None`。
 pub fn take_arg<T: serde::de::DeserializeOwned>(args: &Value, keys: &[&str]) -> Result<T, String> {
     let raw = keys
         .iter()
-        .find_map(|k| args.get(*k))
-        .filter(|v| !v.is_null())
+        .find_map(|k| args.get(*k).filter(|v| !v.is_null()))
         .cloned()
         .unwrap_or(Value::Null);
     let key = keys.first().copied().unwrap_or("");
