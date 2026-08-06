@@ -20,7 +20,7 @@
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 
-use axum::extract::{Path, State as AxumState};
+use axum::extract::{Path, Query, State as AxumState};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::sse::{Event, Sse};
 use axum::response::IntoResponse;
@@ -79,22 +79,28 @@ struct BridgeToHost {
 }
 
 impl BridgeToHost {
-    fn post(&self, action: &str, data: Value) {
+    /// payload 形状必须与前端 shim 的 `dispatchHostAction` 完全一致：
+    /// `{ kind: "open-url" | "open-path" | "restart" | "exit", value?: string }`。
+    /// 前端还有一条自己发起的同名链路（窗口按钮），两条链路共用同一组字段。
+    fn post(&self, kind: &str, value: Option<String>) {
         let _ = self.tx.send(SidecarEvent {
             event: "host-action".to_string(),
-            payload: json!({ "action": action, "data": data }),
+            payload: match value {
+                Some(v) => json!({ "kind": kind, "value": v }),
+                None => json!({ "kind": kind }),
+            },
         });
     }
 }
 
 impl HostBridge for BridgeToHost {
     fn open_url(&self, url: &str) -> Result<(), String> {
-        self.post("openUrl", json!({ "url": url }));
+        self.post("open-url", Some(url.to_string()));
         Ok(())
     }
 
     fn open_path(&self, path: &str) -> Result<(), String> {
-        self.post("openPath", json!({ "path": path }));
+        self.post("open-path", Some(path.to_string()));
         Ok(())
     }
 
@@ -106,11 +112,11 @@ impl HostBridge for BridgeToHost {
     }
 
     fn restart(&self) {
-        self.post("restart", json!({}));
+        self.post("restart", None);
     }
 
     fn exit(&self, code: i32) {
-        self.post("exit", json!({ "code": code }));
+        self.post("exit", Some(code.to_string()));
     }
 }
 
@@ -132,6 +138,22 @@ fn authorized(shared: &Shared, headers: &HeaderMap) -> bool {
         .is_some_and(|v| v == shared.token)
 }
 
+/// EventSource 无法附加自定义 header，SSE 只能把 token 放 query。
+/// 仅回环监听 + 一次性随机 token，query 泄漏面等同 header。
+fn authorized_with_query(shared: &Shared, headers: &HeaderMap, query: &TokenQuery) -> bool {
+    if authorized(shared, headers) {
+        return true;
+    }
+    query.token.as_deref() == Some(shared.token.as_str())
+}
+
+/// `?token=..` 查询参数。
+#[derive(Debug, Default, serde::Deserialize)]
+pub struct TokenQuery {
+    #[serde(default)]
+    pub token: Option<String>,
+}
+
 /// `POST /rpc/{cmd}`，body 为 `invoke` 的参数对象。
 async fn rpc(
     AxumState(shared): AxumState<Arc<Shared>>,
@@ -147,9 +169,20 @@ async fn rpc(
     }
 
     let args = body.map(|Json(v)| v).unwrap_or_else(|| json!({}));
+
+    // 未注册命令是「接口不存在」，必须与命令内部报错区分：
+    // 前端 shim 靠 404 给出「未知命令」而不是把它当业务失败显示。
+    let Some(handler) = shared.handlers.get(&cmd) else {
+        log::warn!("未知命令: {cmd}");
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "ok": false, "error": format!("未知命令: {cmd}") })),
+        );
+    };
+
     let ctx = RpcContext::new(shared.app.clone());
 
-    match shared.handlers.dispatch(&cmd, ctx, args).await {
+    match handler(ctx, args).await {
         Ok(value) => (StatusCode::OK, Json(json!({ "ok": true, "data": value }))),
         Err(msg) => {
             // 与 Tauri IPC 一致：命令返回 Err 是业务错误，不是传输层错误。
@@ -166,9 +199,10 @@ async fn rpc(
 /// `GET /events`：SSE。对应前端 `listen()`。
 async fn events(
     AxumState(shared): AxumState<Arc<Shared>>,
+    Query(query): Query<TokenQuery>,
     headers: HeaderMap,
 ) -> Result<Sse<impl futures::Stream<Item = Result<Event, std::convert::Infallible>>>, StatusCode> {
-    if !authorized(&shared, &headers) {
+    if !authorized_with_query(&shared, &headers, &query) {
         return Err(StatusCode::UNAUTHORIZED);
     }
 
@@ -177,9 +211,16 @@ async fn events(
         loop {
             match rx.recv().await {
                 Ok(ev) => {
-                    let data = serde_json::to_string(&ev.payload)
-                        .unwrap_or_else(|_| "null".to_string());
-                    yield Ok(Event::default().event(ev.event).data(data));
+                    // 必须用「无名事件 + data 里带事件名」：浏览器的 EventSource
+                    // 对 `event: xxx` 命名事件只走 addEventListener("xxx")，
+                    // 不触发 onmessage。前端 shim 是单一 onmessage 分发器，
+                    // 所以这里把事件名塞进 data，由 shim 自己路由。
+                    let data = serde_json::to_string(&json!({
+                        "event": ev.event,
+                        "payload": ev.payload,
+                    }))
+                    .unwrap_or_else(|_| "null".to_string());
+                    yield Ok(Event::default().data(data));
                 }
                 // 订阅者跟不上：跳过丢失的事件继续收，不断流。
                 Err(broadcast::error::RecvError::Lagged(n)) => {
