@@ -18,10 +18,12 @@
 //! 的其它 app 理论上能连 loopback，token 用于阻断这种越权调用。
 
 use std::net::{Ipv4Addr, SocketAddr};
+use std::path::{Component, PathBuf};
 use std::sync::Arc;
 
+use axum::body::Body;
 use axum::extract::{Path, Query, State as AxumState};
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::{header, HeaderMap, HeaderValue, Response, StatusCode};
 use axum::response::sse::{Event, Sse};
 use axum::response::IntoResponse;
 use axum::routing::{get, post};
@@ -129,6 +131,11 @@ struct Shared {
     handlers: Handlers,
     events: broadcast::Sender<SidecarEvent>,
     token: String,
+    /// 实际监听端口（注入前端握手用）。
+    port: u16,
+    /// 前端产物目录（`dist-android`）。`None` 时不托管静态站点，
+    /// 宿主需自行提供页面并调 `window.__ccsSetHandshake`。
+    webroot: Option<PathBuf>,
 }
 
 fn authorized(shared: &Shared, headers: &HeaderMap) -> bool {
@@ -261,6 +268,160 @@ async fn command_names(
 }
 
 // ============================================================
+// 静态站点（同源托管前端）
+// ============================================================
+
+/// 前端产物同源托管的理由：
+///
+/// 1. `file://` 下的 WebView 对 `fetch("http://127.0.0.1:PORT/...")` 属跨源，
+///    Android WebView 默认 `allow-universal-access-from-file` 关闭，请求会被拦；
+///    开这个开关等于给本地页面万能跨源权限，比同源托管危险得多。
+/// 2. `EventSource` 在 `file://` 源下同样受同源策略限制。
+/// 3. 同源后 `X-CCS-Token` 仍然生效，token 仅由本进程注入到 index.html，
+///    其它 App 拿不到（它们即使能连回环也读不到 token）。
+async fn static_asset(
+    AxumState(shared): AxumState<Arc<Shared>>,
+    Path(path): Path<String>,
+) -> Response<Body> {
+    serve_static(&shared, &path).await
+}
+
+async fn static_index(AxumState(shared): AxumState<Arc<Shared>>) -> Response<Body> {
+    serve_static(&shared, "index.html").await
+}
+
+fn plain(status: StatusCode, msg: &str) -> Response<Body> {
+    let mut res = Response::new(Body::from(msg.to_string()));
+    *res.status_mut() = status;
+    res.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("text/plain; charset=utf-8"),
+    );
+    res
+}
+
+/// 把 URL 路径安全地映射到 webroot 下的文件。
+///
+/// 只接受普通路径段：`..`、绝对根、Windows 前缀一律拒绝，防止宿主 WebView 里
+/// 的任意页面通过 `/../../..` 读到 app 私有目录里的其它文件。
+fn resolve_under(root: &std::path::Path, rel: &str) -> Option<PathBuf> {
+    let mut out = root.to_path_buf();
+    for comp in std::path::Path::new(rel).components() {
+        match comp {
+            Component::Normal(seg) => out.push(seg),
+            Component::CurDir => {}
+            Component::ParentDir | Component::RootDir | Component::Prefix(_) => return None,
+        }
+    }
+    Some(out)
+}
+
+fn content_type_for(path: &std::path::Path) -> &'static str {
+    match path
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or_default()
+        .to_ascii_lowercase()
+        .as_str()
+    {
+        "html" => "text/html; charset=utf-8",
+        "js" | "mjs" => "text/javascript; charset=utf-8",
+        "css" => "text/css; charset=utf-8",
+        "json" => "application/json; charset=utf-8",
+        "svg" => "image/svg+xml",
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "ico" => "image/x-icon",
+        "woff" => "font/woff",
+        "woff2" => "font/woff2",
+        "ttf" => "font/ttf",
+        "map" => "application/json; charset=utf-8",
+        "wasm" => "application/wasm",
+        _ => "application/octet-stream",
+    }
+}
+
+/// 注入到 index.html `<head>` 里的握手脚本。必须在任何业务脚本之前执行，
+/// 这样 `runtime.ts` 的 `waitForHandshake()` 首次调用就能同步命中。
+fn handshake_script(shared: &Shared) -> String {
+    format!(
+        "<script>window.__CCS_SIDECAR__={{\"port\":{},\"token\":\"{}\"}};</script>",
+        shared.port, shared.token
+    )
+}
+
+async fn serve_static(shared: &Shared, rel: &str) -> Response<Body> {
+    let Some(root) = shared.webroot.as_ref() else {
+        return plain(
+            StatusCode::NOT_FOUND,
+            "sidecar 未配置 --webroot，静态站点不可用",
+        );
+    };
+
+    let rel = if rel.is_empty() { "index.html" } else { rel };
+    let Some(mut target) = resolve_under(root, rel) else {
+        return plain(StatusCode::BAD_REQUEST, "非法路径");
+    };
+    if target.is_dir() {
+        target.push("index.html");
+    }
+
+    // SPA 回退：非资源请求（无扩展名或指向不存在的路由）交给 index.html。
+    // cc-switch 前端用的是内存路由，实际只会命中 `/`，这里兜底以防未来加 router。
+    if !target.is_file() {
+        target = root.join("index.html");
+        if !target.is_file() {
+            return plain(StatusCode::NOT_FOUND, "index.html 不存在");
+        }
+    }
+
+    let bytes = match tokio::fs::read(&target).await {
+        Ok(b) => b,
+        Err(e) => {
+            log::warn!("读取静态文件失败 {}: {e}", target.display());
+            return plain(StatusCode::INTERNAL_SERVER_ERROR, "读取静态文件失败");
+        }
+    };
+
+    let ctype = content_type_for(&target);
+    let is_index = ctype.starts_with("text/html");
+
+    let body = if is_index {
+        let html = String::from_utf8_lossy(&bytes).to_string();
+        let script = handshake_script(shared);
+        // `<head>` 之后立刻插入；没有 head 时退化为整体前置。
+        match html.find("<head>") {
+            Some(i) => {
+                let at = i + "<head>".len();
+                let mut out = String::with_capacity(html.len() + script.len());
+                out.push_str(&html[..at]);
+                out.push_str(&script);
+                out.push_str(&html[at..]);
+                Body::from(out)
+            }
+            None => Body::from(format!("{script}{html}")),
+        }
+    } else {
+        Body::from(bytes)
+    };
+
+    let mut res = Response::new(body);
+    res.headers_mut()
+        .insert(header::CONTENT_TYPE, HeaderValue::from_static(ctype));
+    // index.html 带一次性 token，绝不允许被 WebView 缓存复用到下一次启动。
+    let cache = if is_index {
+        "no-store"
+    } else {
+        "public, max-age=31536000, immutable"
+    };
+    res.headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static(cache));
+    res
+}
+
+// ============================================================
 // 启动
 // ============================================================
 
@@ -273,7 +434,10 @@ fn new_token() -> String {
 ///
 /// `port` 为 0 时由内核分配；真实端口与 token 以一行 JSON 打到 stdout，
 /// 宿主（`CcsProxyService`）解析后交给 WebView。
-pub fn run_sidecar(port: u16) -> Result<(), String> {
+///
+/// `webroot` 指向前端产物目录（`dist-android`）。给了就同源托管站点，
+/// 宿主只需 `loadUrl("http://127.0.0.1:{port}/")`，无需处理跨源与 token 注入。
+pub fn run_sidecar(port: u16, webroot: Option<PathBuf>) -> Result<(), String> {
     // logger 必须先装，否则 Database::init / 迁移阶段的日志会被丢弃。
     // 真正的级别稍后由 init_states 依据数据库里的 LogConfig 覆盖。
     crate::android_log::init(log::LevelFilter::Info);
@@ -284,10 +448,10 @@ pub fn run_sidecar(port: u16) -> Result<(), String> {
         .build()
         .map_err(|e| format!("创建 tokio runtime 失败: {e}"))?;
 
-    runtime.block_on(async move { serve(port).await })
+    runtime.block_on(async move { serve(port, webroot).await })
 }
 
-async fn serve(port: u16) -> Result<(), String> {
+async fn serve(port: u16, webroot: Option<PathBuf>) -> Result<(), String> {
     let (tx, _rx) = broadcast::channel::<SidecarEvent>(EVENT_CHANNEL_CAPACITY);
 
     let app: AppHandle<Wry> = AppHandle::new(
@@ -323,20 +487,20 @@ async fn serve(port: u16) -> Result<(), String> {
     log::info!("已注册 {} 条命令", handlers.len());
 
     let token = new_token();
-    let shared = Arc::new(Shared {
-        app,
-        handlers,
-        events: tx,
-        token: token.clone(),
-    });
 
-    let router = Router::new()
-        .route("/health", get(health))
-        .route("/events", get(events))
-        .route("/rpc", get(command_names))
-        .route("/rpc/:cmd", post(rpc))
-        .with_state(shared);
+    let webroot = match webroot {
+        Some(dir) if dir.is_dir() => Some(dir),
+        Some(dir) => {
+            // 不 fail-fast：宿主可能自带页面，只是没传/传错目录。记日志继续跑，
+            // /rpc 面仍然可用，前端可由宿主注入握手。
+            log::warn!("webroot 不是目录，静态站点关闭: {}", dir.display());
+            None
+        }
+        None => None,
+    };
 
+    // 端口先绑定再建 Shared：index.html 注入的握手需要真实端口，
+    // 而 port=0 时真实端口只有 bind 之后才知道。
     let addr = SocketAddr::from((Ipv4Addr::LOCALHOST, port));
     let listener = tokio::net::TcpListener::bind(addr)
         .await
@@ -345,10 +509,38 @@ async fn serve(port: u16) -> Result<(), String> {
         .local_addr()
         .map_err(|e| format!("读取本地地址失败: {e}"))?;
 
+    let has_webroot = webroot.is_some();
+    let shared = Arc::new(Shared {
+        app,
+        handlers,
+        events: tx,
+        token: token.clone(),
+        port: local.port(),
+        webroot,
+    });
+
+    let mut router = Router::new()
+        .route("/health", get(health))
+        .route("/events", get(events))
+        .route("/rpc", get(command_names))
+        .route("/rpc/:cmd", post(rpc));
+    if has_webroot {
+        router = router
+            .route("/", get(static_index))
+            .route("/*path", get(static_asset));
+    }
+    let router = router.with_state(shared);
+
     // 宿主握手：必须是 stdout 首行，且只打这一行结构化数据。
     println!(
         "{}",
-        json!({ "ready": true, "port": local.port(), "token": token })
+        json!({
+            "ready": true,
+            "port": local.port(),
+            "token": token,
+            "url": format!("http://127.0.0.1:{}/", local.port()),
+            "webroot": has_webroot,
+        })
     );
     use std::io::Write;
     let _ = std::io::stdout().flush();

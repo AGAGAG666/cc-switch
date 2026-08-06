@@ -40,7 +40,8 @@ fn main() {
     #[cfg(target_os = "android")]
     {
         let port = android_sidecar_port();
-        if let Err(err) = cc_switch_lib::run_sidecar(port) {
+        let webroot = android_sidecar_webroot();
+        if let Err(err) = cc_switch_lib::run_sidecar(port, webroot) {
             eprintln!("cc-switch sidecar 启动失败: {err}");
             std::process::exit(1);
         }
@@ -73,4 +74,31 @@ fn android_sidecar_port() -> u16 {
         .ok()
         .and_then(|v| v.parse::<u16>().ok())
         .unwrap_or(0)
+}
+
+/// 解析前端产物目录。
+///
+/// 优先级：`--webroot <DIR>` / `--webroot=<DIR>` > `CCS_SIDECAR_WEBROOT` > 无。
+/// 无值时 sidecar 只开 `/rpc` 与 `/events`，页面由宿主自行提供。
+#[cfg(target_os = "android")]
+fn android_sidecar_webroot() -> Option<std::path::PathBuf> {
+    let mut args = std::env::args().skip(1);
+    while let Some(arg) = args.next() {
+        if let Some(value) = arg.strip_prefix("--webroot=") {
+            if !value.is_empty() {
+                return Some(std::path::PathBuf::from(value));
+            }
+        } else if arg == "--webroot" {
+            if let Some(value) = args.next() {
+                if !value.is_empty() {
+                    return Some(std::path::PathBuf::from(value));
+                }
+            }
+        }
+    }
+
+    std::env::var("CCS_SIDECAR_WEBROOT")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .map(std::path::PathBuf::from)
 }
