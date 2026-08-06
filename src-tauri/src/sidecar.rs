@@ -272,7 +272,8 @@ async fn serve(port: u16) -> Result<(), String> {
 
     init_states(&app)?;
 
-    let handlers = Handlers::from_pairs(crate::cc_switch_generate_handler!());
+    // `generate_handler!` 替身直接展开为 `Handlers::from_pairs(vec![..])`。
+    let handlers: Handlers = crate::cc_switch_generate_handler!();
     log::info!("已注册 {} 条命令", handlers.len());
 
     let token = new_token();
