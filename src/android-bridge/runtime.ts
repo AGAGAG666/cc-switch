@@ -31,7 +31,90 @@ declare global {
       close?: () => void;
       toast?: (text: string) => void;
     };
+    /**
+     * 宿主通过 `addJavascriptInterface` 注入的同步能力面。
+     * `@JavascriptInterface` 方法不能返回 Promise，所以目录选择走 id + 回调。
+     */
+    __CCS_NATIVE__?: {
+      openUrl?: (url: string) => void;
+      openPath?: (path: string) => void;
+      pickFolder?: (requestId: number) => void;
+      homeDir?: () => string;
+      restart?: () => void;
+      exit?: (code: number) => void;
+      minimize?: () => void;
+      close?: () => void;
+      toast?: (text: string) => void;
+    };
+    /** 宿主完成目录选择后回调（由本模块安装）。 */
+    __ccsResolveFolderPick?: (requestId: number, path: string | null) => void;
   }
+}
+
+type HostSurface = NonNullable<Window["__CCS_HOST__"]>;
+
+let folderPickSeq = 0;
+const folderPickWaiters = new Map<number, (path: string | null) => void>();
+
+/**
+ * 由 `__CCS_NATIVE__` 现场合成宿主面。
+ *
+ * 为什么需要这条回退路径：宿主原本在 `onPageFinished` 里 evaluateJavascript 装
+ * `__CCS_HOST__`，那是页面 load 之后的时点。业务代码目前只在用户交互时才取宿主，
+ * 时序上够用，但一旦将来有模块在挂载期就调（或 WebView 重载后尚未补装），
+ * 就会静默拿到 undefined。`__CCS_NATIVE__` 是 addJavascriptInterface 绑定的，
+ * 从脚本执行的第一行起就可用，据它现场合成可以彻底摆脱注入时序。
+ */
+function buildHostFromNative(): HostSurface | undefined {
+  const n = window.__CCS_NATIVE__;
+  if (!n) return undefined;
+
+  if (!window.__ccsResolveFolderPick) {
+    window.__ccsResolveFolderPick = (requestId, path) => {
+      const resolve = folderPickWaiters.get(requestId);
+      if (!resolve) return;
+      folderPickWaiters.delete(requestId);
+      resolve(path || null);
+    };
+  }
+
+  return {
+    openUrl: (url) => n.openUrl?.(url),
+    openPath: (path) => n.openPath?.(path),
+    pickFolder: () =>
+      new Promise<string | null>((resolve) => {
+        if (!n.pickFolder) {
+          resolve(null);
+          return;
+        }
+        const id = ++folderPickSeq;
+        folderPickWaiters.set(id, resolve);
+        try {
+          n.pickFolder(id);
+        } catch (e) {
+          folderPickWaiters.delete(id);
+          console.warn("[ccs] 宿主目录选择调用失败", e);
+          resolve(null);
+        }
+      }),
+    restart: () => n.restart?.(),
+    exit: (code) => n.exit?.(code),
+    minimize: () => n.minimize?.(),
+    close: () => n.close?.(),
+    toast: (text) => n.toast?.(text),
+  };
+}
+
+/**
+ * 取宿主能力面：优先用宿主已注入的 `__CCS_HOST__`，否则据 `__CCS_NATIVE__` 合成
+ * 并缓存回 `window.__CCS_HOST__`，让后续调用与宿主注入的形态一致。
+ */
+function resolveHost(): HostSurface | undefined {
+  const injected = window.__CCS_HOST__;
+  if (injected) return injected;
+  const synthesized = buildHostFromNative();
+  if (synthesized) window.__CCS_HOST__ = synthesized;
+  return synthesized;
 }
 
 let handshakeWaiters: Array<(h: SidecarHandshake) => void> = [];
@@ -151,7 +234,7 @@ const HOST_ACTION_EVENT = "host-action";
 function dispatchHostAction(payload: unknown): void {
   const action = payload as { kind?: string; value?: string } | null;
   if (!action?.kind) return;
-  const host = window.__CCS_HOST__;
+  const host = resolveHost();
   switch (action.kind) {
     case "open-url":
       host?.openUrl?.(action.value ?? "");
@@ -264,9 +347,9 @@ export async function requestHostAction(
   kind: HostActionKind,
   value?: string,
 ): Promise<void> {
-  const host = window.__CCS_HOST__;
+  const host = resolveHost();
   if (!host) {
-    console.warn("[ccs] 宿主未注入 __CCS_HOST__，忽略动作", kind, value);
+    console.warn("[ccs] 宿主未注入 __CCS_HOST__/__CCS_NATIVE__，忽略动作", kind, value);
     return;
   }
   switch (kind) {
@@ -296,7 +379,7 @@ export async function requestHostAction(
  * 所以由宿主的 SAF/文件选择器负责；宿主没实现时返回 null，前端会退回手输路径。
  */
 export async function pickFolder(): Promise<string | null> {
-  const host = window.__CCS_HOST__;
+  const host = resolveHost();
   if (!host?.pickFolder) return null;
   try {
     return await host.pickFolder();
