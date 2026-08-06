@@ -1,5 +1,7 @@
 #![allow(non_snake_case)]
 
+#[cfg(target_os = "android")]
+mod android_bridge;
 mod auth;
 mod balance;
 mod codex_oauth;
@@ -49,6 +51,8 @@ pub use global_proxy::*;
 pub use hermes::*;
 pub use import_export::*;
 pub use mcp::*;
+#[cfg(target_os = "android")]
+pub use android_bridge::*;
 pub use misc::*;
 pub use model_fetch::*;
 pub use omo::*;

@@ -105,6 +105,15 @@ impl Handlers {
         Self { map }
     }
 
+    /// 合并另一张表（sidecar 用来追加 Android 专属命令，而不去改共享命令表）。
+    pub fn extend(&mut self, other: Handlers) {
+        for (name, f) in other.map {
+            if self.map.insert(name, f).is_some() {
+                log::warn!("命令 {name} 重复注册，后者覆盖前者");
+            }
+        }
+    }
+
     pub fn get(&self, name: &str) -> Option<HandlerFn> {
         self.map.get(name).copied()
     }
