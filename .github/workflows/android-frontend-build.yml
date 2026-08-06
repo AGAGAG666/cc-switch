@@ -67,47 +67,47 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -f dist/index.html || { echo "::error::dist/index.html 缺失"; exit 1; }
+          test -f dist-android/index.html || { echo "::error::dist-android/index.html 缺失"; exit 1; }
 
-          echo "=== dist 结构 ==="
-          find dist -type f | sort
+          echo "=== dist-android 结构 ==="
+          find dist-android -type f | sort
 
           echo "=== 体积 ==="
-          du -sh dist
-          du -sb dist | cut -f1
+          du -sh dist-android
+          du -sb dist-android | cut -f1
 
           # 静态资源必须是相对路径，否则 WebView 用 file:// 或 assets 协议加载会 404。
-          if grep -qE '(src|href)="/' dist/index.html; then
-            echo "::error::dist/index.html 存在绝对路径引用（base 配置失效）"
-            grep -nE '(src|href)="/' dist/index.html
+          if grep -qE '(src|href)="/' dist-android/index.html; then
+            echo "::error::dist-android/index.html 存在绝对路径引用（base 配置失效）"
+            grep -nE '(src|href)="/' dist-android/index.html
             exit 1
           fi
 
           # 真实 tauri IPC 不该出现在 android 产物里。
-          if grep -rl "__TAURI_INTERNALS__" dist >/dev/null 2>&1; then
+          if grep -rl "__TAURI_INTERNALS__" dist-android >/dev/null 2>&1; then
             echo "::error::产物里仍引用 __TAURI_INTERNALS__，alias 未生效"
-            grep -rl "__TAURI_INTERNALS__" dist
+            grep -rl "__TAURI_INTERNALS__" dist-android
             exit 1
           fi
 
           # 桥接层必须在（sidecar 握手 + SSE）。
-          if ! grep -rql "__CCS_SIDECAR__" dist; then
+          if ! grep -rql "__CCS_SIDECAR__" dist-android; then
             echo "::error::产物里找不到 __CCS_SIDECAR__，android-bridge 未打进去"
             exit 1
           fi
 
           # 移动端覆盖层必须注入。
-          if ! grep -q "ccs-android-mobile" dist/index.html; then
+          if ! grep -q 'data-ccs="mobile-overrides"' dist-android/index.html; then
             echo "::error::index.html 未注入移动端 CSS 覆盖层"
             exit 1
           fi
 
           echo "=== index.html ==="
-          cat dist/index.html
+          cat dist-android/index.html
 
       - name: Upload dist
         uses: actions/upload-artifact@v4
         with:
           name: ccs-android-dist
-          path: dist/
+          path: dist-android/
           if-no-files-found: error
