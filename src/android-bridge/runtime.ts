@@ -170,6 +170,17 @@ interface RpcEnvelope {
 }
 
 /**
+ * 只能由宿主完成、不能交给 sidecar 的命令。
+ *
+ * `pick_directory` 在桌面走 Tauri 的 dialog 插件（原生目录选择器）。sidecar 是
+ * 纯 native 进程，没有 `Context`，起不了 Activity，因此 `BridgeToHost::pick_folder`
+ * 只能返回 `None`——一旦把它当普通命令发给 sidecar，"浏览目录"按钮就会静默
+ * 返回空值（配置目录覆盖、打开供应商终端都依赖它）。这里在 shim 层短路，
+ * 直接走宿主的 `pickFolder`，语义与桌面一致：选中返回路径，取消返回 null。
+ */
+const HOST_ONLY_COMMANDS = new Set(["pick_directory"]);
+
+/**
  * 与 `@tauri-apps/api/core` 的 `invoke` 同签名。
  *
  * 失败时 reject 一个字符串（Tauri 对 `Result<_, String>` 的行为一致），
@@ -179,6 +190,10 @@ export async function invoke<T>(
   cmd: string,
   args?: Record<string, unknown>,
 ): Promise<T> {
+  if (HOST_ONLY_COMMANDS.has(cmd)) {
+    return (await pickFolder()) as unknown as T;
+  }
+
   const h = await waitForHandshake();
 
   let res: Response;
