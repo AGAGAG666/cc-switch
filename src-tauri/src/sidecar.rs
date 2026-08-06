@@ -114,6 +114,14 @@ impl HostBridge for BridgeToHost {
     }
 
     fn restart(&self) {
+        // 实测结论：这条事件送不到宿主。调用方 `AppHandle::restart()` 在同一个同步
+        // 调用栈上紧接着执行 `std::process::exit(RESTART_EXIT_CODE)`，tokio 得不到
+        // 任何调度机会去 flush SSE，订阅者只会看到连接被关闭（用 open_url 做对照
+        // 实验可 47ms 内收到 host-action，restart 则一条都收不到）。
+        //
+        // 因此宿主的自愈不能依赖这条事件，必须靠等待子进程退出码 51
+        // （见 ZeroTermux 的 CcsSidecar 守护线程）。这里仍然发送，是为了保持
+        // BridgeToHost 各动作形状一致，且未来若改为「先 flush 再 exit」即可生效。
         self.post("restart", None);
     }
 
