@@ -537,28 +537,8 @@ async fn serve(port: u16, webroot: Option<PathBuf>) -> Result<(), String> {
             .route("/", get(static_index))
             .route("/*path", get(static_asset));
     }
-    let router = router.with_state(shared);
-
-    // 宿主握手：必须是 stdout 首行，且只打这一行结构化数据。
-    println!(
-        "{}",
-        json!({
-            "ready": true,
-            "port": local.port(),
-            "token": token,
-            "url": format!("http://127.0.0.1:{}/", local.port()),
-            "webroot": has_webroot,
-        })
-    );
-    use std::io::Write;
-    let _ = std::io::stdout().flush();
-
-    log::info!("sidecar 监听 {local}");
-
     // Android sidecar 缺少桌面版 setup 里的 restore_proxy_state_on_startup。
-    // 桌面版在 lib.rs 的 setup hook 里检查 proxy_config.enabled，把上次开着的
-    // 路由重新接管；sidecar 没有走那条路，导致每次重启都要在 UI 里手动开一遍。
-    // 这里补上等效逻辑：先取 AppState，再按 enabled 列逐 app 恢复接管状态。
+    // 必须在 router.with_state(shared) 之前拿引用，否则 shared 已被移走。
     {
         let state = shared.app.state::<crate::store::AppState>();
         let apps_to_restore: Vec<&'static str> = {
@@ -591,6 +571,24 @@ async fn serve(port: u16, webroot: Option<PathBuf>) -> Result<(), String> {
             }
         }
     }
+
+    let router = router.with_state(shared);
+
+    // 宿主握手：必须是 stdout 首行，且只打这一行结构化数据。
+    println!(
+        "{}",
+        json!({
+            "ready": true,
+            "port": local.port(),
+            "token": token,
+            "url": format!("http://127.0.0.1:{}/", local.port()),
+            "webroot": has_webroot,
+        })
+    );
+    use std::io::Write;
+    let _ = std::io::stdout().flush();
+
+    log::info!("sidecar 监听 {local}");
 
     axum::serve(listener, router)
         .await
