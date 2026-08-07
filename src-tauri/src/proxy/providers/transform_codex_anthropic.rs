@@ -1701,24 +1701,6 @@ mod tests {
         assert_eq!(messages[2]["role"], "user");
     }
 
-    /// 只有 assistant、清空后无内容可发时必须报错，而不是发一个空 messages 给上游
-    /// （Anthropic 对空 messages 同样 400）。
-    #[test]
-    fn test_request_assistant_only_history_is_rejected() {
-        let input = json!({
-            "model": "claude-opus-5",
-            "max_output_tokens": 100,
-            "input": [
-                { "role": "assistant", "content": [{ "type": "output_text", "text": "半截" }] }
-            ]
-        });
-        // ensure_leading_user_message 会先补一个前导 user，因此这里仍是合法请求：
-        // 补出来的 user 留下、结尾的 assistant 被丢。
-        let result = responses_request_to_anthropic(input, 4096).unwrap();
-        let messages = result["messages"].as_array().unwrap();
-        assert_eq!(messages.last().unwrap()["role"], "user");
-    }
-
     #[test]
     fn test_request_missing_max_output_tokens_injects_default() {
         let input = json!({
@@ -2947,8 +2929,11 @@ mod tests {
         assert!(responses_request_to_anthropic(input, 4096).is_err());
     }
 
+    /// 仅有 assistant 的历史（压缩/恢复会产生）要同时满足两条硬约束：首条必须是
+    /// user（Anthropic 要求），末条也必须是 user（中转网关要求）。因此补出前导 user
+    /// 之后，那条 assistant 会被当作结尾 prefill 丢掉，只剩补出来的 user。
     #[test]
-    fn test_request_assistant_first_gets_leading_user() {
+    fn test_request_assistant_only_history_keeps_leading_user_and_drops_prefill() {
         let input = json!({
             "model": "c",
             "max_output_tokens": 100,
@@ -2958,8 +2943,8 @@ mod tests {
         });
         let result = responses_request_to_anthropic(input, 4096).unwrap();
         let messages = result["messages"].as_array().unwrap();
+        assert_eq!(messages.len(), 1);
         assert_eq!(messages[0]["role"], "user");
-        assert_eq!(messages[1]["role"], "assistant");
     }
 
     // ==================== tools / tool_choice edge cases ====================
