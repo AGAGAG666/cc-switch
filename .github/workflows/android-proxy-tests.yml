@@ -1,0 +1,62 @@
+---
+name: Android Proxy Tests
+
+# 跑 cc-switch 本体（src-tauri）的单元测试。
+#
+# 存在理由：android-sidecar 分支上原本没有任何跑本体单测的入口 ——
+# android-sidecar-build.yml 只做交叉编译（编得过 ≠ 逻辑对），
+# android-shim-probe.yml 只测 src-tauri/android 里的 tauri 替身，
+# ci.yml 只在 main 分支和 PR 上触发。结果是改 proxy 转换逻辑时无法验证。
+#
+# 只在宿主 target 上跑：测试是纯逻辑的，不需要 Android target。
+on:
+  push:
+    branches: [android-sidecar]
+    paths:
+      - "src-tauri/src/proxy/**"
+      - ".github/workflows/android-proxy-tests.yml"
+  workflow_dispatch:
+    inputs:
+      filter:
+        description: "只跑匹配该字符串的测试（留空跑全部 proxy 测试）"
+        required: false
+        default: ""
+        type: string
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: src-tauri
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 安装 Rust
+        run: |
+          rustup toolchain install 1.95 --profile minimal
+          rustup default 1.95
+          rustc --version
+
+      - name: 安装 libclang (rquickjs bindgen 需要)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libclang-dev clang
+          echo "LIBCLANG_PATH=$(dirname "$(ls /usr/lib/llvm-*/lib/libclang.so* | head -1)")" >> "$GITHUB_ENV"
+
+      - name: 缓存 cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: proxy-tests-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: proxy-tests-
+
+      - name: cargo test
+        run: |
+          set -o pipefail
+          FILTER="${{ github.event.inputs.filter }}"
+          # --lib：只跑库内单测，跳过需要 tauri runtime 的集成测试。
+          cargo test --lib ${FILTER:+"$FILTER"} 2>&1 | tail -120
