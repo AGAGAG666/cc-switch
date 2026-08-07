@@ -287,6 +287,7 @@ pub fn responses_request_to_anthropic(
     }
     trim_trailing_assistant_text(&mut messages);
     drop_empty_messages(&mut messages);
+    drop_trailing_assistant_message(&mut messages);
     if messages.is_empty() {
         return Err(ProxyError::InvalidRequest(
             "cannot convert Codex request: empty messages".to_string(),
@@ -1099,6 +1100,36 @@ fn trim_trailing_assistant_text(messages: &mut [Value]) {
     }
 }
 
+/// Drops a trailing assistant turn so the converted request always ends on a user
+/// message.
+///
+/// Anthropic itself accepts a trailing assistant turn as a *prefill* (the model
+/// continues that text), but Claude-Code-style relay gateways reject it outright:
+///   `assistant-prefill final message is not supported; last message must be user`
+/// and answer HTTP 400.
+///
+/// Codex never prefills on purpose — its `input` normally ends with the new user
+/// message. A trailing assistant turn only shows up when the previous turn did not
+/// finish cleanly: the user interrupted mid-stream, or the session was compacted /
+/// resumed. In all of those cases the leftover half-written turn carries no value,
+/// so dropping it lets the model regenerate instead of asking it to continue a
+/// fragment. Appending a synthetic user message instead would leave that fragment in
+/// view and invite the model to drift.
+///
+/// Runs after `trim_trailing_assistant_text` and `drop_empty_messages`, so a prefill
+/// that was merely whitespace is already gone by now and only a substantive one
+/// reaches here. The caller re-checks for an empty vec afterwards.
+fn drop_trailing_assistant_message(messages: &mut Vec<Value>) {
+    while messages
+        .last()
+        .and_then(|message| message.get("role"))
+        .and_then(Value::as_str)
+        == Some("assistant")
+    {
+        messages.pop();
+    }
+}
+
 /// Anthropic 400s on a text content block whose text is empty or whitespace-only.
 /// Such blocks arise when a prior Responses turn recorded an empty
 /// input_text/output_text (e.g. an empty assistant text emitted alongside a
@@ -1638,6 +1669,86 @@ mod tests {
         assert_eq!(result["messages"][0]["role"], "user");
         assert_eq!(result["messages"][0]["content"][0]["type"], "text");
         assert_eq!(result["messages"][0]["content"][0]["text"], "Hello");
+    }
+
+    /// 中断/压缩后的历史会以 assistant 收尾。Anthropic 本体把它当 prefill 接受，
+    /// 但 Claude-Code 风格的中转网关直接回 400
+    /// `assistant-prefill final message is not supported; last message must be user`。
+    #[test]
+    fn test_request_drops_trailing_assistant_prefill() {
+        let input = json!({
+            "model": "claude-opus-5",
+            "max_output_tokens": 100,
+            "input": [
+                { "role": "user", "content": [{ "type": "input_text", "text": "写个函数" }] },
+                { "role": "assistant", "content": [{ "type": "output_text", "text": "好的，我先" }] }
+            ]
+        });
+        let result = responses_request_to_anthropic(input, 4096).unwrap();
+        let messages = result["messages"].as_array().unwrap();
+        assert_eq!(
+            messages.len(),
+            1,
+            "结尾的 assistant 半截回复必须被丢弃，而不是留给模型续写"
+        );
+        assert_eq!(messages.last().unwrap()["role"], "user");
+        assert_eq!(messages[0]["content"][0]["text"], "写个函数");
+    }
+
+    /// 连续多个 assistant 收尾（压缩历史里出现过）也要一路清到 user 为止。
+    #[test]
+    fn test_request_drops_consecutive_trailing_assistant_turns() {
+        let input = json!({
+            "model": "claude-opus-5",
+            "max_output_tokens": 100,
+            "input": [
+                { "role": "user", "content": [{ "type": "input_text", "text": "问题" }] },
+                { "role": "assistant", "content": [{ "type": "output_text", "text": "答案一" }] },
+                { "role": "assistant", "content": [{ "type": "output_text", "text": "答案二" }] }
+            ]
+        });
+        let result = responses_request_to_anthropic(input, 4096).unwrap();
+        let messages = result["messages"].as_array().unwrap();
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages.last().unwrap()["role"], "user");
+    }
+
+    /// 正常以 user 结尾的请求不能被这条清理规则动到，尤其是中间的 assistant 历史
+    /// 必须完整保留 —— 否则会丢上下文。
+    #[test]
+    fn test_request_keeps_interior_assistant_history() {
+        let input = json!({
+            "model": "claude-opus-5",
+            "max_output_tokens": 100,
+            "input": [
+                { "role": "user", "content": [{ "type": "input_text", "text": "第一问" }] },
+                { "role": "assistant", "content": [{ "type": "output_text", "text": "第一答" }] },
+                { "role": "user", "content": [{ "type": "input_text", "text": "第二问" }] }
+            ]
+        });
+        let result = responses_request_to_anthropic(input, 4096).unwrap();
+        let messages = result["messages"].as_array().unwrap();
+        assert_eq!(messages.len(), 3, "中间的 assistant 轮次不应被丢弃");
+        assert_eq!(messages[1]["role"], "assistant");
+        assert_eq!(messages[2]["role"], "user");
+    }
+
+    /// 只有 assistant、清空后无内容可发时必须报错，而不是发一个空 messages 给上游
+    /// （Anthropic 对空 messages 同样 400）。
+    #[test]
+    fn test_request_assistant_only_history_is_rejected() {
+        let input = json!({
+            "model": "claude-opus-5",
+            "max_output_tokens": 100,
+            "input": [
+                { "role": "assistant", "content": [{ "type": "output_text", "text": "半截" }] }
+            ]
+        });
+        // ensure_leading_user_message 会先补一个前导 user，因此这里仍是合法请求：
+        // 补出来的 user 留下、结尾的 assistant 被丢。
+        let result = responses_request_to_anthropic(input, 4096).unwrap();
+        let messages = result["messages"].as_array().unwrap();
+        assert_eq!(messages.last().unwrap()["role"], "user");
     }
 
     #[test]
