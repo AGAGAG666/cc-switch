@@ -2163,6 +2163,20 @@ impl RequestForwarder {
             is_copilot,
         );
 
+        // 单值头去重 —— 必须在所有头来源（客户端转发、adapter 认证头、伪装头注入、
+        // local-proxy 覆盖层）都落定之后执行，否则漏掉任一来源就等于没做。
+        //
+        // 背景：nginx 对 `Authorization` 这类 RFC 定义为单值的头，收到重复条目时直接回
+        // 一个**不带任何说明的 400 HTML 错误页**（实测 nginx/1.24.0：重复 authorization →
+        // 裸 400，而头过大 → 400 且 body 写明 "Header value is too long"）。这种裸 400 对
+        // 用户完全不可诊断，而且发生在上游应用层之前，Codex 客户端也无法把它当作可重试的
+        // 流内错误处理 —— 表现就是任务直接失败，而不是正常的 `Reconnecting...`。
+        //
+        // `ordered_headers` 全程用 `append` 构建以保留客户端原始头序，任何一处守卫
+        // （saw_auth / saw_user_agent / ...）失效都会静默产生重复条目。这里做一次收口，
+        // 保留首个值、丢弃其余，并把命中情况以 warn 记下来（只记头名，绝不记值）。
+        dedupe_single_valued_headers(&mut ordered_headers, adapter.name());
+
         reject_proxy_placeholder_for_managed_account_upstream(&url, &ordered_headers)?;
 
         // 日志目标 URL 的脱敏分两种情形：
@@ -2188,6 +2202,41 @@ impl RequestForwarder {
             body_bytes.len(),
             short_value_hash(Some(&filtered_body))
         );
+
+        // 出站头指纹 —— 只记「头名 + 该头名下的条目数 + 值的字节长度」，绝不记头值。
+        //
+        // 存在理由：网关层的 400 / 连接重置发生在上游应用层之前，响应体里往往只有一张
+        // nginx HTML 错误页，无法回推是哪个头出的问题。实测 nginx/1.24.0 的三档行为：
+        //   - 单值头重复          → 裸 400（body 无任何说明）
+        //   - 单头值 > 8190 字节  → 400，body 写明 "Header value is too long"
+        //   - 头部总量 ~40KB      → 连接直接重置（表现为 error sending request）
+        // 有了这行日志，三者可以一眼区分，不必再靠猜。
+        if log::log_enabled!(log::Level::Info) {
+            let mut fingerprint: Vec<String> = Vec::new();
+            for name in ordered_headers.keys() {
+                let count = ordered_headers.get_all(name).iter().count();
+                let bytes: usize = ordered_headers
+                    .get_all(name)
+                    .iter()
+                    .map(|value| value.as_bytes().len())
+                    .sum();
+                if count > 1 {
+                    fingerprint.push(format!("{}x{}={}B", name.as_str(), count, bytes));
+                } else {
+                    fingerprint.push(format!("{}={}B", name.as_str(), bytes));
+                }
+            }
+            // 粗算线路上的头部总字节：每条 "name: value\r\n" 约为 名长+值长+4。
+            let wire_bytes: usize = ordered_headers
+                .iter()
+                .map(|(name, value)| name.as_str().len() + value.as_bytes().len() + 4)
+                .sum();
+            log::info!(
+                "[{tag}] >>> 出站头指纹: total_wire={wire_bytes}B, entries={}, [{}] (值已省略)",
+                ordered_headers.iter().count(),
+                fingerprint.join(" ")
+            );
+        }
 
         // 确定超时
         let timeout = if self.non_streaming_timeout.is_zero() {
@@ -2229,6 +2278,17 @@ impl RequestForwarder {
                 request = request.timeout(self.non_streaming_timeout);
             }
             for (key, value) in &ordered_headers {
+                // `host` 必须交给 reqwest/hyper 依据 URL 自行生成：HTTP/1.1 下生成
+                // `Host:`，HTTP/2 下生成 `:authority` 伪头。这里若再显式塞一个独立的
+                // `host` 头，h2 请求就会同时带 `:authority` 与 `host` 两个权威来源，
+                // 实测 nginx/1.24.0 判定为重复 host，直接回一张不带任何说明的 400
+                // HTML 错误页（A/B 对照：去掉该头同一请求即返回 200）。
+                //
+                // raw-write 路径（下面的 hyper_client 分支）仍需要 `ordered_headers`
+                // 里的 host —— 那条路径自己按字面量写头，不会自动补。
+                if should_skip_header_on_pooled_client(key) {
+                    continue;
+                }
                 request = request.header(key, value);
             }
             let send = request.body(body_bytes).send();
@@ -3414,6 +3474,81 @@ fn apply_local_proxy_header_overrides(
     }
 }
 
+/// 走 reqwest 连接池时必须交给客户端自行生成、不能由我们显式转发的头。
+///
+/// 目前只有 `host`：reqwest/hyper 依 URL 生成 HTTP/1.1 的 `Host:` 或 HTTP/2 的
+/// `:authority` 伪头。我们再显式塞一个独立 `host` 头，h2 请求上就会出现两个权威主机
+/// 来源，实测 nginx/1.24.0 判定为重复 host，直接回一张无任何说明的裸 400 HTML。
+///
+/// raw-write 路径不适用本函数 —— 那条路径逐字写头，host 必须由我们提供。
+fn should_skip_header_on_pooled_client(name: &http::HeaderName) -> bool {
+    *name == http::header::HOST
+}
+
+/// RFC 定义为单值、重复出现即属协议违规的请求头。
+///
+/// 只收录「重复即会被网关判违规」的头，不含 `accept` / `accept-encoding` /
+/// `anthropic-beta` 这类合法可重复（逗号列表语义）的头 —— 那些即便出现多条也不会
+/// 触发 400，去重反而可能改变语义。
+const SINGLE_VALUED_REQUEST_HEADERS: &[&str] = &[
+    "authorization",
+    "x-api-key",
+    "x-goog-api-key",
+    "host",
+    "content-type",
+    "content-length",
+    "user-agent",
+    "anthropic-version",
+    "chatgpt-account-id",
+];
+
+/// 对单值头做「保留首个、丢弃其余」的收口，返回被丢弃条目的头名。
+///
+/// 返回顺序跟随 `SINGLE_VALUED_REQUEST_HEADERS` 的声明顺序，每个头名最多出现一次。
+/// 命中即说明上游头构造有 bug，因此调用方会以 warn 记录。为避免凭据外泄，
+/// 只返回头名，绝不返回头值。
+fn dedupe_single_valued_headers(headers: &mut http::HeaderMap, tag: &str) -> Vec<String> {
+    let mut dropped: Vec<String> = Vec::new();
+
+    for name in SINGLE_VALUED_REQUEST_HEADERS {
+        let header_name = match http::HeaderName::from_bytes(name.as_bytes()) {
+            Ok(header_name) => header_name,
+            // 常量表全是合法头名，这里不可能失败；真失败也只是跳过，不影响转发。
+            Err(_) => continue,
+        };
+
+        // 先在独立作用域里取「首个值 + 是否重复」，让不可变借用在离开作用域时结束，
+        // 之后才做 insert 的可变借用 —— 不依赖 NLL 的借用缩短行为。
+        let first_value = {
+            let mut values = headers.get_all(&header_name).iter();
+            match (values.next(), values.next()) {
+                // 出现两条及以上：取首个值的所有权，准备收口。
+                (Some(first), Some(_)) => Some(first.clone()),
+                // 0 条或 1 条：符合单值语义，无需处理。
+                _ => None,
+            }
+        };
+
+        let Some(first_value) = first_value else {
+            continue;
+        };
+
+        // insert 会移除该头名下的所有旧条目，只留下这一个值。
+        headers.insert(header_name, first_value);
+        dropped.push((*name).to_string());
+    }
+
+    if !dropped.is_empty() {
+        log::warn!(
+            "[{tag}] 出站请求含重复单值头，已保留首个并丢弃其余: {}。\
+             这属于头构造缺陷：若原样发出，nginx 等网关会返回不带说明的 400。",
+            dropped.join(", ")
+        );
+    }
+
+    dropped
+}
+
 fn is_protected_local_proxy_override_header(name: &http::HeaderName) -> bool {
     matches!(
         name.as_str(),
@@ -3577,6 +3712,172 @@ mod tests {
     use serde_json::json;
     use std::collections::HashMap;
     use std::time::Duration;
+
+    /// 连接池路径必须丢掉显式 host：h2 下它会与 `:authority` 并存，
+    /// A/B 实测同一请求带该头 → nginx 裸 400，去掉 → 200。
+    #[test]
+    fn pooled_client_skips_explicit_host_header() {
+        assert!(should_skip_header_on_pooled_client(&http::header::HOST));
+    }
+
+    /// 除 host 之外的头一律照常转发，尤其是认证与伪装指纹相关的头。
+    #[test]
+    fn pooled_client_keeps_all_other_headers() {
+        for name in [
+            http::header::AUTHORIZATION,
+            http::header::USER_AGENT,
+            http::header::CONTENT_TYPE,
+            ACCEPT,
+        ] {
+            assert!(
+                !should_skip_header_on_pooled_client(&name),
+                "{} 不应被跳过",
+                name.as_str()
+            );
+        }
+        for raw in ["x-api-key", "anthropic-version", "anthropic-beta", "x-app"] {
+            let name = http::HeaderName::from_static(raw);
+            assert!(
+                !should_skip_header_on_pooled_client(&name),
+                "{raw} 不应被跳过"
+            );
+        }
+    }
+
+    /// 端到端确认：按转发时的过滤规则构建 reqwest 请求后，出站头里不应出现我们塞的
+    /// host，其余头必须原样保留。
+    #[tokio::test]
+    async fn reqwest_request_built_with_filter_has_no_explicit_host() {
+        let mut headers = http::HeaderMap::new();
+        headers.append(http::header::HOST, HeaderValue::from_static("upstream.example"));
+        headers.append(
+            http::header::AUTHORIZATION,
+            HeaderValue::from_static("Bearer token"),
+        );
+        headers.append("anthropic-version", HeaderValue::from_static("2023-06-01"));
+
+        let client = reqwest::Client::new();
+        let mut request = client.post("https://api.example.com/v1/messages");
+        for (key, value) in &headers {
+            if should_skip_header_on_pooled_client(key) {
+                continue;
+            }
+            request = request.header(key, value);
+        }
+        let built = request.build().expect("build request");
+
+        assert!(
+            built.headers().get(http::header::HOST).is_none(),
+            "host 必须由 reqwest 依 URL 生成，不能出现在我们设置的头里"
+        );
+        assert_eq!(built.headers().get(http::header::AUTHORIZATION).unwrap(), "Bearer token");
+        assert_eq!(built.headers().get("anthropic-version").unwrap(), "2023-06-01");
+    }
+
+    /// 重复 authorization 是实测唯一能让 nginx/1.24.0 返回「裸 400 HTML」的头部违规，
+    /// 也是本函数存在的直接原因：保留首个值，丢弃其余。
+    #[test]
+    fn dedupe_keeps_first_authorization_and_drops_the_rest() {
+        let mut headers = http::HeaderMap::new();
+        headers.append(
+            http::header::AUTHORIZATION,
+            HeaderValue::from_static("Bearer first"),
+        );
+        headers.append(
+            http::header::AUTHORIZATION,
+            HeaderValue::from_static("Bearer second"),
+        );
+        headers.append(
+            http::header::AUTHORIZATION,
+            HeaderValue::from_static("Bearer third"),
+        );
+
+        let dropped = dedupe_single_valued_headers(&mut headers, "Codex");
+
+        assert_eq!(dropped, vec!["authorization".to_string()]);
+        assert_eq!(headers.get_all(http::header::AUTHORIZATION).iter().count(), 1);
+        assert_eq!(
+            headers.get(http::header::AUTHORIZATION).unwrap(),
+            "Bearer first",
+            "必须保留首个值：它来自 adapter 的认证头，是正确的那一个"
+        );
+    }
+
+    /// 单条单值头是绝对多数的正常情况，必须完全不受影响（不改值、不报 warn）。
+    #[test]
+    fn dedupe_leaves_single_valued_headers_untouched() {
+        let mut headers = http::HeaderMap::new();
+        headers.append(
+            http::header::AUTHORIZATION,
+            HeaderValue::from_static("Bearer only"),
+        );
+        headers.append("x-api-key", HeaderValue::from_static("k"));
+        headers.append(http::header::HOST, HeaderValue::from_static("example.com"));
+
+        let dropped = dedupe_single_valued_headers(&mut headers, "Codex");
+
+        assert!(dropped.is_empty());
+        assert_eq!(headers.get(http::header::AUTHORIZATION).unwrap(), "Bearer only");
+        assert_eq!(headers.get("x-api-key").unwrap(), "k");
+        assert_eq!(headers.get(http::header::HOST).unwrap(), "example.com");
+    }
+
+    /// `accept` / `accept-encoding` / `anthropic-beta` 是逗号列表语义的合法可重复头，
+    /// 重复不会触发网关 400。去重它们会改变语义，因此必须放过。
+    #[test]
+    fn dedupe_preserves_legitimately_repeatable_headers() {
+        let mut headers = http::HeaderMap::new();
+        headers.append(ACCEPT, HeaderValue::from_static("text/event-stream"));
+        headers.append(ACCEPT, HeaderValue::from_static("application/json"));
+        headers.append("anthropic-beta", HeaderValue::from_static("claude-code-20250219"));
+        headers.append("anthropic-beta", HeaderValue::from_static("context-1m-2025-08-07"));
+
+        let dropped = dedupe_single_valued_headers(&mut headers, "Codex");
+
+        assert!(
+            dropped.is_empty(),
+            "可重复头不应被去重，实测它们重复时上游仍返回 200"
+        );
+        assert_eq!(headers.get_all(ACCEPT).iter().count(), 2);
+        assert_eq!(headers.get_all("anthropic-beta").iter().count(), 2);
+    }
+
+    /// 多个不同单值头同时重复时，全部都要收口，且报告里逐个列出。
+    #[test]
+    fn dedupe_reports_every_offending_header() {
+        let mut headers = http::HeaderMap::new();
+        for _ in 0..2 {
+            headers.append(
+                http::header::AUTHORIZATION,
+                HeaderValue::from_static("Bearer v"),
+            );
+            headers.append(http::header::HOST, HeaderValue::from_static("example.com"));
+            headers.append("anthropic-version", HeaderValue::from_static("2023-06-01"));
+        }
+
+        let dropped = dedupe_single_valued_headers(&mut headers, "Codex");
+
+        assert_eq!(
+            dropped,
+            vec![
+                "authorization".to_string(),
+                "host".to_string(),
+                "anthropic-version".to_string(),
+            ],
+            "顺序跟随 SINGLE_VALUED_REQUEST_HEADERS 的声明顺序"
+        );
+        for name in ["authorization", "host", "anthropic-version"] {
+            assert_eq!(headers.get_all(name).iter().count(), 1, "{name} 未收口");
+        }
+    }
+
+    /// 空 HeaderMap 不应 panic，也不应报告任何命中。
+    #[test]
+    fn dedupe_handles_empty_header_map() {
+        let mut headers = http::HeaderMap::new();
+        assert!(dedupe_single_valued_headers(&mut headers, "Codex").is_empty());
+        assert!(headers.is_empty());
+    }
 
     fn test_provider_with_type(provider_type: Option<&str>) -> Provider {
         Provider {
