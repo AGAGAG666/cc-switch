@@ -285,9 +285,8 @@ pub fn responses_request_to_anthropic(
             "cannot convert Codex request: empty messages".to_string(),
         ));
     }
-    trim_trailing_assistant_text(&mut messages);
-    drop_empty_messages(&mut messages);
     drop_trailing_assistant_message(&mut messages);
+    drop_empty_messages(&mut messages);
     if messages.is_empty() {
         return Err(ProxyError::InvalidRequest(
             "cannot convert Codex request: empty messages".to_string(),
@@ -1070,36 +1069,6 @@ fn trailing_turn_supports_thinking(messages: &[Value]) -> bool {
         .all(|id| paired_tool_use_ids.contains(id))
 }
 
-/// Removes whitespace-only assistant prefills and trims trailing whitespace from a
-/// real prefill. Anthropic rejects an assistant prefill whose final text ends in
-/// whitespace, and Codex may replay an empty assistant text beside a tool call.
-fn trim_trailing_assistant_text(messages: &mut [Value]) {
-    let Some(last) = messages.last_mut() else {
-        return;
-    };
-    if last.get("role").and_then(Value::as_str) != Some("assistant") {
-        return;
-    }
-    let Some(blocks) = last.get_mut("content").and_then(Value::as_array_mut) else {
-        return;
-    };
-    let Some(block) = blocks.last_mut() else {
-        return;
-    };
-    if block.get("type").and_then(Value::as_str) != Some("text") {
-        return;
-    }
-    let Some(text) = block.get("text").and_then(Value::as_str) else {
-        return;
-    };
-    let trimmed = text.trim_end();
-    if trimmed.is_empty() {
-        blocks.pop();
-    } else if trimmed.len() != text.len() {
-        block["text"] = json!(trimmed);
-    }
-}
-
 /// Drops a trailing assistant turn so the converted request always ends on a user
 /// message.
 ///
@@ -1116,9 +1085,8 @@ fn trim_trailing_assistant_text(messages: &mut [Value]) {
 /// fragment. Appending a synthetic user message instead would leave that fragment in
 /// view and invite the model to drift.
 ///
-/// Runs after `trim_trailing_assistant_text` and `drop_empty_messages`, so a prefill
-/// that was merely whitespace is already gone by now and only a substantive one
-/// reaches here. The caller re-checks for an empty vec afterwards.
+/// Runs before `drop_empty_messages` so a turn left empty by this pass is cleaned up
+/// too; the caller re-checks for an empty vec afterwards.
 fn drop_trailing_assistant_message(messages: &mut Vec<Value>) {
     while messages
         .last()
@@ -2812,8 +2780,11 @@ mod tests {
         assert_eq!(response["tool_choice"]["disable_parallel_tool_use"], true);
     }
 
+    /// 曾经的行为是「保留结尾 prefill、只修掉尾部空白」，因为 Anthropic 本体允许
+    /// prefill。但 Claude-Code 风格的中转网关会对任何 assistant 收尾直接回 400
+    /// （`assistant-prefill final message is not supported`），所以现在整条丢弃。
     #[test]
-    fn test_request_trims_trailing_assistant_whitespace() {
+    fn test_request_drops_trailing_assistant_instead_of_trimming() {
         let response = responses_request_to_anthropic(
             json!({
                 "model": "c",
@@ -2825,7 +2796,10 @@ mod tests {
             4096,
         )
         .unwrap();
-        assert_eq!(response["messages"][1]["content"][0]["text"], "prefix");
+        let messages = response["messages"].as_array().unwrap();
+        assert_eq!(messages.len(), 1, "结尾 assistant 必须被丢弃而非保留");
+        assert_eq!(messages[0]["role"], "user");
+        assert_eq!(messages[0]["content"][0]["text"], "continue");
     }
 
     #[test]
