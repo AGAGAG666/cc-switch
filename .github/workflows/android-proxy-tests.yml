@@ -38,10 +38,17 @@ jobs:
           rustup default 1.95
           rustc --version
 
-      - name: 安装 libclang (rquickjs bindgen 需要)
+      - name: 安装系统依赖
+        # libclang: rquickjs 的 bindgen 需要。
+        # glib/gtk/webkit/libsoup/javascriptcore: 宿主 target 会走
+        # `cfg(not(target_os = "android"))` 分支引入**真** tauri，它链接整套 GTK 栈。
+        # Android 交叉编译用替身 crate 顶替、不需要这些，但宿主上跑单测必须装。
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y -qq libclang-dev clang
+          sudo apt-get install -y -qq libclang-dev clang \
+            libglib2.0-dev libgtk-3-dev libwebkit2gtk-4.1-dev \
+            libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+            libssl-dev librsvg2-dev patchelf
           echo "LIBCLANG_PATH=$(dirname "$(ls /usr/lib/llvm-*/lib/libclang.so* | head -1)")" >> "$GITHUB_ENV"
 
       - name: 缓存 cargo
