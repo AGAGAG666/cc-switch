@@ -1,3 +1,9 @@
+> **Fork notice — `android-sidecar` branch.**
+> This branch builds cc-switch as a native aarch64 sidecar for
+> [ZeroTermux-CCS](https://github.com/AGAGAG666/ZeroTermux-CCS) on Android.
+> Unofficial; not affiliated with or endorsed by the upstream author.
+> See [README.android.md](README.android.md).
+
 <div align="center">
 
 # CC Switch
