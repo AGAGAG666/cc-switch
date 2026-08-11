@@ -1288,6 +1288,12 @@ mod tests {
         let input = concat!(
             "event: message_start\n",
             "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_terminal\"}}\n\n",
+            "event: content_block_start\n",
+            "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n",
+            "event: content_block_delta\n",
+            "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"done\"}}\n\n",
+            "event: content_block_stop\n",
+            "data: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
             "event: message_stop\n",
             "data: {\"type\":\"message_stop\"}\n\n",
             "event: error\n",
@@ -1296,6 +1302,7 @@ mod tests {
         let merged = run(input).await;
         assert_eq!(merged.matches("event: response.completed").count(), 1);
         assert_eq!(merged.matches("event: response.failed").count(), 0);
+        assert!(!merged.contains("late"));
     }
 
     #[tokio::test]
