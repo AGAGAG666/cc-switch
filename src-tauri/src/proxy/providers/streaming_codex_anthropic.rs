@@ -453,6 +453,24 @@ impl AnthropicToResponsesState {
             })
     }
 
+    /// Diagnostic text for a 200-but-empty upstream completion. Carries the terminal
+    /// signal and reported output token count so the user can tell an upstream content
+    /// filter (usually `output_tokens` 0-1) from a gateway that dropped the body.
+    fn empty_completion_message(&self) -> String {
+        let stop = self
+            .stop_reason
+            .clone()
+            .unwrap_or_else(|| "none".to_string());
+        let output_tokens = self
+            .anthropic_usage
+            .get("output_tokens")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        format!(
+            "Upstream returned an empty completion: no content blocks              (stop_reason={stop}, output_tokens={output_tokens}). The gateway accepted              the request but produced no content — retry, or switch provider/model."
+        )
+    }
+
     fn finalize(&mut self) -> Vec<Bytes> {
         if self.completed {
             return Vec::new();
@@ -472,6 +490,20 @@ impl AnthropicToResponsesState {
 
         let (status, incomplete_reason) =
             map_anthropic_stop_reason_to_status(self.stop_reason.as_deref());
+
+        // Upstream answered with HTTP 200 and a well-formed terminal signal, yet the
+        // message carried no content at all (no text, no thinking, no tool_use). Codex
+        // would record that as a normally-completed turn with an empty assistant
+        // message, which surfaces downstream as a silent blank reply (cc-connect prints
+        // "(空响应)") and leaves no trace of what went wrong. Report it as a failure so
+        // the client shows an actionable reason and can retry.
+        if !self.has_substantive_output() {
+            let message = self.empty_completion_message();
+            if let Some(event) = self.failed_event(message, Some("empty_completion".to_string())) {
+                events.push(event);
+                return events;
+            }
+        }
 
         let mut output = self.output_items.clone();
         output.sort_by_key(|(output_index, _)| *output_index);
@@ -1087,6 +1119,69 @@ mod tests {
         let block = decode_anthropic_thinking_block(encoded).unwrap();
         assert_eq!(block["signature"], "sig_abc");
         assert_eq!(block["thinking"], "hmm");
+    }
+
+    /// Regression: provider "sota" answered two Feishu turns with HTTP 200,
+    /// message_start → message_delta(end_turn) → message_stop and zero content blocks
+    /// (usage output_tokens=1). Codex used to record a completed-but-empty assistant
+    /// turn, which reached the user as a blank "(空响应)" bubble with no reason.
+    #[tokio::test]
+    async fn test_end_turn_without_any_content_reports_failed() {
+        let input = concat!(
+            "event: message_start\n",
+            "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_empty\",\"model\":\"claude-opus-5\",\"usage\":{\"input_tokens\":15939,\"cache_read_input_tokens\":13229,\"output_tokens\":1}}}\n\n",
+            "event: message_delta\n",
+            "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":1}}\n\n",
+            "event: message_stop\n",
+            "data: {\"type\":\"message_stop\"}\n\n"
+        );
+        let merged = run(input).await;
+        assert!(merged.contains("event: response.created"));
+        assert!(merged.contains("event: response.failed"));
+        assert!(merged.contains("empty_completion"));
+        assert!(merged.contains("stop_reason=end_turn"));
+        assert!(merged.contains("output_tokens=1"));
+        assert!(!merged.contains("event: response.completed"));
+    }
+
+    /// The same anomaly delivered as one non-streaming JSON document.
+    #[test]
+    fn test_json_message_without_content_reports_failed() {
+        let merged = render_message_events(&json!({
+            "id": "msg_empty",
+            "type": "message",
+            "role": "assistant",
+            "model": "claude-opus-5",
+            "content": [],
+            "stop_reason": "end_turn",
+            "usage": { "input_tokens": 15939, "output_tokens": 1 }
+        }));
+        assert!(merged.contains("event: response.failed"));
+        assert!(merged.contains("empty_completion"));
+        assert!(!merged.contains("event: response.completed"));
+    }
+
+    /// A thinking-only reply is real output and must still complete normally, so the
+    /// empty-completion guard cannot swallow reasoning-only turns.
+    #[tokio::test]
+    async fn test_thinking_only_reply_still_completes() {
+        let input = concat!(
+            "event: message_start\n",
+            "data: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_think\",\"model\":\"claude\",\"usage\":{\"input_tokens\":5,\"output_tokens\":9}}}\n\n",
+            "event: content_block_start\n",
+            "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"thinking\",\"thinking\":\"\"}}\n\n",
+            "event: content_block_delta\n",
+            "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"thinking_delta\",\"thinking\":\"weighing\"}}\n\n",
+            "event: content_block_stop\n",
+            "data: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
+            "event: message_delta\n",
+            "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":9}}\n\n",
+            "event: message_stop\n",
+            "data: {\"type\":\"message_stop\"}\n\n"
+        );
+        let merged = run(input).await;
+        assert!(merged.contains("event: response.completed"));
+        assert!(!merged.contains("empty_completion"));
     }
 
     #[tokio::test]

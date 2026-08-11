@@ -483,6 +483,24 @@ impl ChatToResponsesState {
             })
     }
 
+    /// Diagnostic text for a 200-but-empty upstream completion, mirroring the Anthropic
+    /// path so both routes report the same anomaly in the same words.
+    fn empty_completion_message(&self) -> String {
+        let finish = self
+            .finish_reason
+            .clone()
+            .unwrap_or_else(|| "none".to_string());
+        let output_tokens = self
+            .latest_usage
+            .as_ref()
+            .and_then(|u| u.get("output_tokens"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
+        format!(
+            "Upstream returned an empty completion: no content in any choice              (finish_reason={finish}, output_tokens={output_tokens}). The gateway accepted              the request but produced no content — retry, or switch provider/model."
+        )
+    }
+
     fn finalize(&mut self) -> Vec<Bytes> {
         if self.completed {
             return Vec::new();
@@ -493,6 +511,15 @@ impl ChatToResponsesState {
         events.extend(self.finalize_reasoning());
         events.extend(self.finalize_text());
         events.extend(self.finalize_tools());
+
+        // HTTP 200 with a terminal chunk but nothing to show: no text, no reasoning, no
+        // tool call. Codex would store an empty assistant turn and the user only sees a
+        // blank reply, so report the anomaly instead of a clean completion.
+        if !self.has_substantive_output() {
+            let message = self.empty_completion_message();
+            events.push(self.failed_event(message, Some("empty_completion".to_string())));
+            return events;
+        }
 
         let status = response_status_from_finish_reason(self.finish_reason.as_deref());
         let mut response = self.base_response(status, self.completed_output_items());
@@ -928,6 +955,25 @@ mod tests {
         assert!(!output.contains("<think>"));
         assert!(!output.contains("</think>"));
         assert!(output.contains("event: response.completed"));
+    }
+
+    /// Chat-route counterpart of the Anthropic empty-completion guard: a stream that
+    /// finishes with `stop` but never carries content must not be handed to Codex as a
+    /// clean completion, otherwise the user only sees a blank reply.
+    #[tokio::test]
+    async fn empty_chat_completion_reports_failed() {
+        let output = collect(vec![
+            "data: {\"id\":\"chatcmpl_empty\",\"created\":123,\"model\":\"gpt-5.4\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":15939,\"completion_tokens\":1,\"total_tokens\":15940}}\n\n",
+            "data: [DONE]\n\n",
+        ])
+        .await;
+
+        assert!(output.contains("event: response.created"));
+        assert!(output.contains("event: response.failed"));
+        assert!(output.contains("empty_completion"));
+        assert!(output.contains("finish_reason=stop"));
+        assert!(output.contains("output_tokens=1"));
+        assert!(!output.contains("event: response.completed"));
     }
 
     #[tokio::test]
