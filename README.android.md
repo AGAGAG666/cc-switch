@@ -125,9 +125,12 @@ ZeroTermux-CCS 侧在 `app/build.gradle` 用 `ext.ccsArtifactTag` 钉住 tag，
   在 Android 改用内核 `renameat2(RENAME_NOREPLACE)`，目标已被新登录创建时原子
   返回 `EEXIST`，不会覆盖更新的官方认证。桌面仍沿用上游 hard-link 事务。
 
-> 源码同步不等于手机 APK 已升级。ZeroTermux 当前仍锁定
-> `ccsArtifactTag = ccs-android-6bec653`；生成新 sidecar/前端产物、更新 tag、
-> SHA-256 与 size，再重建 APK 后，设备中的 CCS 才会切换到 v3.20.0。
+> 本次完整流程已完成：ZeroTermux 已锁定并打包 `ccs-android-2f8353d`，
+> `ccs-2f8353d` 已正式发布。源码同步、sidecar/前端产物、APK 构建和线上
+> Release 回读均已验证，设备安装后 CCS 才会切换到 v3.20.0。
+>
+> 已发布 Debug arm64 APK：`ZeroTermux-0.118.3.63-debug_arm64-v8a.apk`，
+> SHA-256：`a32d4f0f6597a31a658d530baaf94b8db7020563f470c6a2d5cbcef1e78aa472`。
 
 ## 与上游同步
 
