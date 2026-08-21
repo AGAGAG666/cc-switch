@@ -14,6 +14,12 @@ import { requestHostAction } from "./runtime";
 export type Theme = "light" | "dark";
 export type UnlistenFn = () => void;
 
+export interface WindowEvent<T> {
+  event: string;
+  id: number;
+  payload: T;
+}
+
 class AndroidWindow {
   readonly label = "main";
 
@@ -33,6 +39,21 @@ class AndroidWindow {
     const wrapped = (): void => handler();
     window.addEventListener("resize", wrapped);
     return () => window.removeEventListener("resize", wrapped);
+  }
+
+  async onFocusChanged(
+    handler: (event: WindowEvent<boolean>) => void,
+  ): Promise<UnlistenFn> {
+    const emit = (payload: boolean): void =>
+      handler({ event: "tauri://focus", id: 0, payload });
+    const onFocus = (): void => emit(true);
+    const onBlur = (): void => emit(false);
+    window.addEventListener("focus", onFocus);
+    window.addEventListener("blur", onBlur);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener("blur", onBlur);
+    };
   }
 
   async setDecorations(_decorations: boolean): Promise<void> {}
