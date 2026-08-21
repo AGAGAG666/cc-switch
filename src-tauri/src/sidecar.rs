@@ -203,10 +203,7 @@ async fn rpc(
             // 与 Tauri IPC 一致：命令返回 Err 是业务错误，不是传输层错误。
             // 用 200 + ok:false 让前端 shim 统一 reject，避免和 401/404 混淆。
             log::debug!("命令 {cmd} 失败: {msg}");
-            (
-                StatusCode::OK,
-                Json(json!({ "ok": false, "error": msg })),
-            )
+            (StatusCode::OK, Json(json!({ "ok": false, "error": msg })))
         }
     }
 }
@@ -561,11 +558,18 @@ async fn serve(port: u16, webroot: Option<PathBuf>) -> Result<(), String> {
         } else {
             log::info!("[sidecar] 恢复代理状态，应用列表: {apps_to_restore:?}");
             for app_type in apps_to_restore {
-                match state.proxy_service.set_takeover_for_app(app_type, true).await {
+                match state
+                    .proxy_service
+                    .set_takeover_for_app(app_type, true)
+                    .await
+                {
                     Ok(()) => log::info!("[sidecar] ✓ 已恢复 {app_type} 代理接管"),
                     Err(e) => {
                         log::error!("[sidecar] ✗ 恢复 {app_type} 代理失败: {e}");
-                        let _ = state.proxy_service.set_takeover_for_app(app_type, false).await;
+                        let _ = state
+                            .proxy_service
+                            .set_takeover_for_app(app_type, false)
+                            .await;
                     }
                 }
             }
@@ -605,9 +609,8 @@ fn init_states(app: &AppHandle<Wry>) -> Result<(), String> {
     use crate::services::SkillService;
     use tokio::sync::RwLock;
 
-    let db = Arc::new(
-        crate::database::Database::init().map_err(|e| format!("初始化数据库失败: {e}"))?,
-    );
+    let db =
+        Arc::new(crate::database::Database::init().map_err(|e| format!("初始化数据库失败: {e}"))?);
 
     // 数据库可用后立即应用持久化日志级别（与桌面一致，损坏配置 fail-closed 到 Info）。
     match db.get_log_config() {
@@ -640,12 +643,12 @@ fn init_states(app: &AppHandle<Wry>) -> Result<(), String> {
     app.manage(CopilotAuthState(Arc::new(RwLock::new(
         CopilotAuthManager::new(app_config_dir.clone()),
     ))));
-    app.manage(CodexOAuthState(Arc::new(RwLock::new(
-        CodexOAuthManager::new(app_config_dir.clone()),
+    app.manage(CodexOAuthState(Arc::new(CodexOAuthManager::new(
+        app_config_dir.clone(),
     ))));
-    app.manage(XaiOAuthState(Arc::new(RwLock::new(
-        XaiOAuthManager::new(app_config_dir),
-    ))));
+    app.manage(XaiOAuthState(Arc::new(RwLock::new(XaiOAuthManager::new(
+        app_config_dir,
+    )))));
 
     Ok(())
 }

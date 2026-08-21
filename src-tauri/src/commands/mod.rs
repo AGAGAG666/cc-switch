@@ -39,6 +39,8 @@ mod usage;
 mod webdav_sync;
 mod workspace;
 
+#[cfg(target_os = "android")]
+pub use android_bridge::*;
 pub use auth::*;
 pub use balance::*;
 pub use codex_oauth::*;
@@ -52,8 +54,6 @@ pub use global_proxy::*;
 pub use hermes::*;
 pub use import_export::*;
 pub use mcp::*;
-#[cfg(target_os = "android")]
-pub use android_bridge::*;
 pub use misc::*;
 pub use model_fetch::*;
 pub use omo::*;

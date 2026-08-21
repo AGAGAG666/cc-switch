@@ -122,29 +122,11 @@ impl CodexAuthFileTransaction {
             };
         };
 
-        // The no-clobber install/rollback protocol below requires hard links.
-        // Probe before moving the live credentials so unsupported custom Codex
-        // directories fail closed with auth.json still in place.
-        let probe = Self::unique_sibling_path(&path, "restore-probe")?;
-        match std::fs::hard_link(&path, &probe) {
-            Ok(()) => {
-                std::fs::remove_file(&probe).map_err(|error| {
-                    format!(
-                        "清理 Codex auth 事务能力探针失败 ({}): {error}",
-                        probe.display()
-                    )
-                })?;
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-                return Err(Self::changed_error());
-            }
-            Err(error) => {
-                return Err(format!(
-                    "Codex auth 所在文件系统不支持安全恢复，原凭据未修改 ({}): {error}",
-                    path.display()
-                ));
-            }
-        }
+        // Probe the platform's no-clobber primitive before moving live credentials.
+        // Desktop uses hard links. Android app data directories reject hard links under
+        // SELinux, so Android uses renameat2(RENAME_NOREPLACE) on disposable siblings.
+        // Either primitive guarantees that a concurrent Codex login wins atomically.
+        Self::probe_no_clobber_support(&path)?;
 
         let quarantine = Self::unique_sibling_path(&path, "restore-backup")?;
         match std::fs::rename(&path, &quarantine) {
@@ -218,7 +200,7 @@ impl CodexAuthFileTransaction {
                 })?;
             drop(file);
 
-            match std::fs::hard_link(&temporary, &self.path) {
+            match Self::move_file_if_vacant(&temporary, &self.path) {
                 Ok(()) => Ok(()),
                 Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
                     Err(Self::changed_error())
@@ -313,16 +295,8 @@ impl CodexAuthFileTransaction {
         source: &std::path::Path,
         destination: &std::path::Path,
     ) -> Result<(), String> {
-        match std::fs::hard_link(source, destination) {
-            Ok(()) => {
-                std::fs::remove_file(source).map_err(|error| {
-                    format!(
-                        "清理 Codex auth 事务文件失败 ({}): {error}",
-                        source.display()
-                    )
-                })?;
-                Ok(())
-            }
+        match Self::move_file_if_vacant(source, destination) {
+            Ok(()) => Ok(()),
             Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
                 // The destination was recreated by Codex and is newer than the
                 // quarantined generation.
@@ -340,6 +314,104 @@ impl CodexAuthFileTransaction {
                 destination.display()
             )),
         }
+    }
+
+    #[cfg(target_os = "android")]
+    fn probe_no_clobber_support(path: &std::path::Path) -> Result<(), String> {
+        let source = Self::unique_sibling_path(path, "restore-probe-source")?;
+        let destination = Self::unique_sibling_path(path, "restore-probe-destination")?;
+        let result = (|| -> Result<(), String> {
+            std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&source)
+                .map_err(|error| {
+                    format!(
+                        "创建 Codex auth 事务能力探针失败 ({}): {error}",
+                        source.display()
+                    )
+                })?;
+            Self::move_file_if_vacant(&source, &destination).map_err(|error| {
+                format!(
+                    "Codex auth 所在文件系统不支持安全恢复，原凭据未修改 ({}): {error}",
+                    path.display()
+                )
+            })?;
+            Ok(())
+        })();
+        let _ = std::fs::remove_file(&source);
+        let _ = std::fs::remove_file(&destination);
+        result
+    }
+
+    #[cfg(not(target_os = "android"))]
+    fn probe_no_clobber_support(path: &std::path::Path) -> Result<(), String> {
+        let probe = Self::unique_sibling_path(path, "restore-probe")?;
+        match std::fs::hard_link(path, &probe) {
+            Ok(()) => std::fs::remove_file(&probe).map_err(|error| {
+                format!(
+                    "清理 Codex auth 事务能力探针失败 ({}): {error}",
+                    probe.display()
+                )
+            }),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                Err(Self::changed_error())
+            }
+            Err(error) => Err(format!(
+                "Codex auth 所在文件系统不支持安全恢复，原凭据未修改 ({}): {error}",
+                path.display()
+            )),
+        }
+    }
+
+    /// Atomically move `source` into a vacant `destination` without replacing a
+    /// concurrently-created file. On Android, SELinux blocks hard links inside app
+    /// data directories, so use the kernel's renameat2(RENAME_NOREPLACE) primitive.
+    #[cfg(target_os = "android")]
+    fn move_file_if_vacant(
+        source: &std::path::Path,
+        destination: &std::path::Path,
+    ) -> std::io::Result<()> {
+        use std::ffi::CString;
+        use std::os::unix::ffi::OsStrExt;
+
+        let source = CString::new(source.as_os_str().as_bytes()).map_err(|_| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Codex auth source path contains an interior NUL byte",
+            )
+        })?;
+        let destination = CString::new(destination.as_os_str().as_bytes()).map_err(|_| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Codex auth destination path contains an interior NUL byte",
+            )
+        })?;
+
+        let result = unsafe {
+            libc::syscall(
+                libc::SYS_renameat2,
+                libc::AT_FDCWD,
+                source.as_ptr(),
+                libc::AT_FDCWD,
+                destination.as_ptr(),
+                libc::RENAME_NOREPLACE,
+            )
+        };
+        if result == 0 {
+            Ok(())
+        } else {
+            Err(std::io::Error::last_os_error())
+        }
+    }
+
+    #[cfg(not(target_os = "android"))]
+    fn move_file_if_vacant(
+        source: &std::path::Path,
+        destination: &std::path::Path,
+    ) -> std::io::Result<()> {
+        std::fs::hard_link(source, destination)?;
+        std::fs::remove_file(source)
     }
 
     fn discard_quarantined(&mut self) {

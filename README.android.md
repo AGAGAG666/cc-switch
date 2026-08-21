@@ -8,10 +8,11 @@ Android aarch64 的 cc-switch 运行时产物，使 cc-switch 能在手机上以
 上游为 [farion1231/cc-switch](https://github.com/farion1231/cc-switch)，
 `LICENSE`（MIT © 2025 Jason Young）逐字节保留未改。
 
-## 设计原则：上游源码一行不改
+## 设计原则：上游业务逻辑少改、兼容层集中维护
 
-163k 行的 cc-switch 本体与 84k 行前端**不做移植式改写**，而是替换它们脚下的
-依赖层。这样上游更新时只需 rebase，冲突面极小。
+cc-switch 本体与前端**不做移植式重写**，主要通过替换依赖层完成 Android 适配。
+少量必须跟随上游 API 变化的兼容点集中在 `cfg(target_os = "android")`、sidecar
+入口和统一命令表中，避免把 Android 分支改成脱离上游的独立实现。
 
 | 层 | 手段 |
 |---|---|
@@ -25,7 +26,7 @@ Android aarch64 的 cc-switch 运行时产物，使 cc-switch 能在手机上以
 | crate | 作用 |
 |---|---|
 | `tauri-shim` | `tauri` 本体替身。拆为 `app/plugins/rpc/runtime/state/window` 六个模块 |
-| `tauri-shim-macros` | 复刻 `#[command]` 与 `generate_handler!`，让上游 **293 个命令**原样编译 |
+| `tauri-shim-macros` | 复刻 `#[command]` 与 `generate_handler!`，让 v3.20.0 上游 **303 个命令**原样编译 |
 | `arboard-shim` | 剪贴板。桌面走 X11/Win32/AppKit，Android 无此栈，改走 `termux-clipboard-set` |
 | `auto-launch-shim` | 开机自启。Android 无对应语义，实现为安全空操作 |
 | `tauri-plugin-updater-shim` | 自动更新。移动端由宿主 APK 负责，此处置空 |
@@ -101,6 +102,33 @@ ZeroTermux-CCS 侧在 `app/build.gradle` 用 `ext.ccsArtifactTag` 钉住 tag，
 已装在设备上的 APK 无法在运行时替换 sidecar（原生 `.so` + assets 内前端），
 必须重新构建安装。
 
+## 上游同步状态
+
+- 当前上游基线：CC Switch `v3.20.0`，`origin/main = 0b5da510`。
+- 当前 Android 分支头：`daa3a2ae`；相对上游保留 34 个 Android/代理定制提交。
+- 同步前回滚分支：`backup/android-sidecar-before-v3.20.0-20260821-222458`。
+- 本次同步补齐了 v3.20.0 新增的 Pi prompt/session 和 OpenCode model 命令；
+  桌面与 sidecar 的统一命令表现为 303 条命令。
+- v3.20.0 将 `CodexOAuthState` 改为直接持有 `Arc<CodexOAuthManager>`；
+  sidecar 初始化已同步调整，并恢复桌面 deep-link 函数的 Android 条件编译。
+
+### 本次验证
+
+- `cargo fmt --check`：通过。
+- `cargo check --lib`：通过。
+- Chat→Responses streaming：27/27 通过。
+- Anthropic→Responses streaming：24/24 通过。
+- Android shim workspace：39/39 通过；3 个 doc test 按设计忽略。
+- 全量 `cargo test --lib`：2654 通过、0 失败、5 忽略。
+- `services::proxy::tests`：86/86 通过，覆盖 Codex auth 恢复、回滚及并发登录保护。
+- Android app data 目录受 SELinux 限制，不能创建 hard link；Codex auth 安全恢复
+  在 Android 改用内核 `renameat2(RENAME_NOREPLACE)`，目标已被新登录创建时原子
+  返回 `EEXIST`，不会覆盖更新的官方认证。桌面仍沿用上游 hard-link 事务。
+
+> 源码同步不等于手机 APK 已升级。ZeroTermux 当前仍锁定
+> `ccsArtifactTag = ccs-android-6bec653`；生成新 sidecar/前端产物、更新 tag、
+> SHA-256 与 size，再重建 APK 后，设备中的 CCS 才会切换到 v3.20.0。
+
 ## 与上游同步
 
 分支点见 `git merge-base origin/main android-sidecar`。
@@ -110,4 +138,6 @@ ZeroTermux-CCS 侧在 `app/build.gradle` 用 `ext.ccsArtifactTag` 钉住 tag，
 git diff --stat $(git merge-base origin/main android-sidecar)..android-sidecar
 ```
 
-因改动集中在新增目录与 `cfg` 分支，rebase 上游的冲突面很小。
+因改动集中在新增目录、`cfg` 分支和统一命令表，rebase 上游时通常只需处理
+Tauri bootstrap、命令注册表及上游接口类型变化。每次同步后必须重新执行 shim、
+proxy 和 Android 构建验证。

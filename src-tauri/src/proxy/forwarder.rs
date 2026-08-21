@@ -3853,7 +3853,10 @@ mod tests {
     #[tokio::test]
     async fn reqwest_request_built_with_filter_has_no_explicit_host() {
         let mut headers = http::HeaderMap::new();
-        headers.append(http::header::HOST, HeaderValue::from_static("upstream.example"));
+        headers.append(
+            http::header::HOST,
+            HeaderValue::from_static("upstream.example"),
+        );
         headers.append(
             http::header::AUTHORIZATION,
             HeaderValue::from_static("Bearer token"),
@@ -3874,8 +3877,14 @@ mod tests {
             built.headers().get(http::header::HOST).is_none(),
             "host 必须由 reqwest 依 URL 生成，不能出现在我们设置的头里"
         );
-        assert_eq!(built.headers().get(http::header::AUTHORIZATION).unwrap(), "Bearer token");
-        assert_eq!(built.headers().get("anthropic-version").unwrap(), "2023-06-01");
+        assert_eq!(
+            built.headers().get(http::header::AUTHORIZATION).unwrap(),
+            "Bearer token"
+        );
+        assert_eq!(
+            built.headers().get("anthropic-version").unwrap(),
+            "2023-06-01"
+        );
     }
 
     /// 重复 authorization 是实测唯一能让 nginx/1.24.0 返回「裸 400 HTML」的头部违规，
@@ -3899,7 +3908,10 @@ mod tests {
         let dropped = dedupe_single_valued_headers(&mut headers, "Codex");
 
         assert_eq!(dropped, vec!["authorization".to_string()]);
-        assert_eq!(headers.get_all(http::header::AUTHORIZATION).iter().count(), 1);
+        assert_eq!(
+            headers.get_all(http::header::AUTHORIZATION).iter().count(),
+            1
+        );
         assert_eq!(
             headers.get(http::header::AUTHORIZATION).unwrap(),
             "Bearer first",
@@ -3921,7 +3933,10 @@ mod tests {
         let dropped = dedupe_single_valued_headers(&mut headers, "Codex");
 
         assert!(dropped.is_empty());
-        assert_eq!(headers.get(http::header::AUTHORIZATION).unwrap(), "Bearer only");
+        assert_eq!(
+            headers.get(http::header::AUTHORIZATION).unwrap(),
+            "Bearer only"
+        );
         assert_eq!(headers.get("x-api-key").unwrap(), "k");
         assert_eq!(headers.get(http::header::HOST).unwrap(), "example.com");
     }
@@ -3933,8 +3948,14 @@ mod tests {
         let mut headers = http::HeaderMap::new();
         headers.append(ACCEPT, HeaderValue::from_static("text/event-stream"));
         headers.append(ACCEPT, HeaderValue::from_static("application/json"));
-        headers.append("anthropic-beta", HeaderValue::from_static("claude-code-20250219"));
-        headers.append("anthropic-beta", HeaderValue::from_static("context-1m-2025-08-07"));
+        headers.append(
+            "anthropic-beta",
+            HeaderValue::from_static("claude-code-20250219"),
+        );
+        headers.append(
+            "anthropic-beta",
+            HeaderValue::from_static("context-1m-2025-08-07"),
+        );
 
         let dropped = dedupe_single_valued_headers(&mut headers, "Codex");
 

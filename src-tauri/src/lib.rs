@@ -83,20 +83,20 @@ pub use store::AppState;
 // android target 下不存在（见 android/tauri-shim 覆盖范围说明）。
 #[cfg(not(target_os = "android"))]
 use std::sync::Arc;
+#[cfg(all(target_os = "macos", not(target_os = "android")))]
+use tauri::image::Image;
 #[cfg(not(target_os = "android"))]
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 #[cfg(not(target_os = "android"))]
-use tauri::RunEvent;
-#[cfg(not(target_os = "android"))]
 use tauri::Emitter;
+#[cfg(not(target_os = "android"))]
+use tauri::RunEvent;
 #[cfg(not(target_os = "android"))]
 use tauri_plugin_deep_link::DeepLinkExt;
 #[cfg(not(target_os = "android"))]
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 #[cfg(not(target_os = "android"))]
 use tauri_plugin_window_state::{AppHandleExt, StateFlags};
-#[cfg(all(target_os = "macos", not(target_os = "android")))]
-use tauri::image::Image;
 
 // ── 跨平台 import ─────────────────────────────────────────────
 use std::fmt;
@@ -264,6 +264,7 @@ fn runtime_log_level_allows(level: log::Level, max_level: log::LevelFilter) -> b
 /// - 解析 URL
 /// - 向前端发射 `deeplink-import` / `deeplink-error` 事件
 /// - 可选：在成功时聚焦主窗口
+#[cfg(not(target_os = "android"))]
 fn handle_deeplink_url(
     app: &tauri::AppHandle,
     url_str: &str,
