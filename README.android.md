@@ -1,146 +1,133 @@
-# android-sidecar 分支说明
+# Android sidecar 分支
 
-本分支为 [ZeroTermux-CCS](https://github.com/AGAGAG666/ZeroTermux-CCS) 提供
-Android aarch64 的 cc-switch 运行时产物，使 cc-switch 能在手机上以
-「原生 sidecar + WebView 前端」形态运行，不依赖 Tauri、不依赖桌面图形栈。
+这个分支把 CC Switch 编译成 Android aarch64 sidecar，供
+[ZeroTermux-CCS](https://github.com/AGAGAG666/ZeroTermux-CCS) 内嵌使用。
+前端仍是 CC Switch 的 React 页面，Android 宿主负责启动 sidecar、提供 WebView 和少量系统能力。
 
-**非官方分支。** 与 cc-switch 上游作者无关联，未获背书。
-上游为 [farion1231/cc-switch](https://github.com/farion1231/cc-switch)，
-`LICENSE`（MIT © 2025 Jason Young）逐字节保留未改。
+本分支不是上游 CC Switch 的官方发布分支，也没有得到上游作者背书。上游仓库是
+[farion1231/cc-switch](https://github.com/farion1231/cc-switch)，许可证保持 MIT 不变。
 
-## 设计原则：上游业务逻辑少改、兼容层集中维护
+## 适配方式
 
-cc-switch 本体与前端**不做移植式重写**，主要通过替换依赖层完成 Android 适配。
-少量必须跟随上游 API 变化的兼容点集中在 `cfg(target_os = "android")`、sidecar
-入口和统一命令表中，避免把 Android 分支改成脱离上游的独立实现。
+Android 版没有桌面 Tauri 窗口。适配集中在两层：
 
-| 层 | 手段 |
-|---|---|
-| Rust 后端 | 用 9 个 shim crate 顶替 `tauri` 及其插件，`Cargo.toml` 按 `cfg` 换 path 依赖 |
-| React 前端 | vite alias 把 `@tauri-apps/*` 指向 `src/android-bridge/*` |
+| 部分 | 做法 |
+| --- | --- |
+| Rust 后端 | 用 Android shim 替代 Tauri 及部分插件，核心业务代码尽量保持上游结构 |
+| React 前端 | 在 Android 构建中把 `@tauri-apps/*` alias 到 `src/android-bridge/` |
 
-## Rust 侧：src-tauri/android/
+少数需要跟随上游 API 的地方放在 Android 条件编译、sidecar 入口和统一命令表中。这样同步上游时，主要处理这些接缝，不必重写整套业务逻辑。
 
-独立 workspace（不干扰 `src-tauri` 本体的依赖解析），9 个 crate：
+## Rust 侧
 
-| crate | 作用 |
-|---|---|
-| `tauri-shim` | `tauri` 本体替身。拆为 `app/plugins/rpc/runtime/state/window` 六个模块 |
-| `tauri-shim-macros` | 复刻 `#[command]` 与 `generate_handler!`，让 v3.20.0 上游 **303 个命令**原样编译 |
-| `arboard-shim` | 剪贴板。桌面走 X11/Win32/AppKit，Android 无此栈，改走 `termux-clipboard-set` |
-| `auto-launch-shim` | 开机自启。Android 无对应语义，实现为安全空操作 |
-| `tauri-plugin-updater-shim` | 自动更新。移动端由宿主 APK 负责，此处置空 |
-| `tauri-plugin-dialog` | 对话框，转发到 `tauri-shim::plugins` |
-| `tauri-plugin-opener` | 外部打开，同上 |
-| `tauri-plugin-store` | 键值存储，同上 |
-| `shim-selftest` | 用**上游真实命令签名**验证宏展开正确性（659 行） |
+`src-tauri/android/` 是独立 workspace，包含以下替身和测试 crate：
 
-`shim-selftest` 是这套 shim 的正确性保障。它覆盖 camelCase 参数改名、
-`State<'_, T>` 多状态、`AppHandle<R>` 泛型、`Window`、非 Result 返回、
-自定义 Display 错误、`Option<T>` 缺键、`Emitter`、三个插件 Ext trait ——
-每一项都对照过 `src-tauri/src/` 里的实际写法。
+| crate | 用途 |
+| --- | --- |
+| `tauri-shim` | 提供 `app`、`plugins`、`rpc`、`runtime`、`state`、`window` 等接口 |
+| `tauri-shim-macros` | 提供 `#[command]` 和 `generate_handler!` 的 Android 实现 |
+| `arboard-shim` | 把剪贴板操作转交给 Termux |
+| `auto-launch-shim` | Android 上的开机启动占位实现 |
+| `tauri-plugin-*` shim | 对话框、打开外部路径、存储和更新接口 |
+| `shim-selftest` | 用上游真实命令签名测试 shim 行为 |
 
-### sidecar 入口
+v3.20.0 的桌面和 Android sidecar 共用 303 条命令。命令表只有一份，位于
+`src-tauri/src/command_list.rs`。
 
-`src-tauri/src/main.rs` 在 Android 下走 `run_sidecar(port, webroot)`，
-以 `--webroot <DIR>` 同源托管前端。webroot 取值优先级：
+### sidecar 启动
 
-```
---webroot <DIR>  >  --webroot=<DIR>  >  CCS_SIDECAR_WEBROOT  >  无
-```
+`src-tauri/src/main.rs` 在 Android 下调用 `run_sidecar`，sidecar 会：
 
-启动后向 stdout 打印握手行交出 `port` 与 `token`，并在 `index.html` 的
-`<head>` 注入 `window.__CCS_SIDECAR__`，前端 shim 同步命中。
+1. 监听本机随机端口。
+2. 用 `--webroot` 托管前端静态文件。
+3. 通过 stdout 输出端口和 token。
+4. 在 `index.html` 的 `<head>` 中注入 `window.__CCS_SIDECAR__`。
 
-## 前端侧：src/android-bridge/
+WebView、RPC 和 SSE 都走同一个本地服务。认证使用 `x-ccs-token`，不是 `Authorization: Bearer`。
 
-12 个模块顶替 9 个 `@tauri-apps/*` 包，另含 `mobile.css` 移动端覆盖层。
-构建开关是环境变量：
+## 前端侧
+
+Android 构建会启用 `src/android-bridge/` 和 `mobile.css`：
 
 ```bash
-CCS_TARGET=android npm run build    # 产物 dist-android/，base "./"
-npm run build                       # 桌面产物 dist/
+CCS_TARGET=android pnpm build:android  # 输出 dist-android/
+pnpm build:renderer                   # 桌面前端
 ```
 
-`vite.config.ts:14` 判定 `isAndroid`，仅在该模式下注入 alias 与 CSS，
-**桌面构建路径完全不受影响**。
+Android alias 只在 `CCS_TARGET=android` 时生效，桌面构建仍使用原来的 Tauri API。
 
 ## CI 工作流
 
-四个，均可 `workflow_dispatch` 手动触发：
+| 工作流 | 用途 |
+| --- | --- |
+| `android-shim-probe.yml` | 编译和测试 Android shim |
+| `android-sidecar-build.yml` | 交叉编译 `aarch64-linux-android` sidecar |
+| `android-frontend-build.yml` | 构建 Android WebView 前端 |
+| `android-proxy-tests.yml` | 在宿主 target 跑代理层单测 |
 
-| 工作流 | 作用 |
-|---|---|
-| `android-shim-probe.yml` | 只编 `src-tauri/android` 子 workspace。先在宿主 target 清类型错误，再验 aarch64 交叉编译 |
-| `android-sidecar-build.yml` | 交叉编译 163k 行**本体**到 `aarch64-linux-android`，暴露 shim 接缝上的 cfg 遗漏 |
-| `android-frontend-build.yml` | 出 Android 前端静态产物 |
-| `android-proxy-tests.yml` | 跑本体单元测试（本分支原本没有这个入口） |
+sidecar 构建会检查 Android 依赖图，避免桌面 Tauri、OpenSSL 和 aws-lc 相关依赖混入错误的 target。
 
-前两个的分工是刻意的：shim-probe 快、只管替身自身编得过；sidecar-build 慢、
-验证替身**真的能顶住上游全部调用点**。
+## 产物和 ZeroTermux 集成
 
-## 产物与消费方式
+sidecar 和前端分别发布为：
 
-`android-sidecar-build.yml` 与 `android-frontend-build.yml` 的产物发布为
-Release，tag 命名 `ccs-android-<commit 短 sha>`：
+| 文件 | 用途 |
+| --- | --- |
+| `libccsidecar.so` | Android aarch64 原生 sidecar |
+| `ccs-web.zip` | WebView 前端静态文件 |
 
-| 产物 | 内容 |
-|---|---|
-| `libccsidecar.so` | aarch64 原生 sidecar |
-| `ccs-web.zip` | React 前端静态产物 |
+当前发布版本：
 
-ZeroTermux-CCS 侧在 `app/build.gradle` 用 `ext.ccsArtifactTag` 钉住 tag，
-下载后校验 SHA-256 与字节数，任一不符即构建失败。
+- CC Switch sidecar：`ccs-android-2f8353d`
+- ZeroTermux APK：`ccs-2f8353d`
+- 上游基线：CC Switch `v3.20.0`，`origin/main = 0b5da510`
+- 当前分支头：`d20ce243`
 
-**升级 CCS 版本的步骤**（宿主 APK 代码无需改动）：
+ZeroTermux 在 `app/build.gradle` 中锁定 tag、SHA-256 和文件大小。更新流程是：
 
-1. 本分支提交改动，触发上述工作流，发布新 tag `ccs-android-<新短sha>`
-2. ZeroTermux-CCS 改 `app/build.gradle` 的 `ext.ccsArtifactTag` 及对应
-   `sha256` / `size`
-3. 重新构建 APK
+1. 修改 `android-sidecar` 并跑测试。
+2. 构建 sidecar 和前端，发布新 `ccs-android-<commit>`。
+3. 更新 ZeroTermux 的 `ccsArtifactTag`、SHA-256 和 size。
+4. 构建 APK，再检查 APK 内的 sidecar 和前端是否与发布资产一致。
 
-已装在设备上的 APK 无法在运行时替换 sidecar（原生 `.so` + assets 内前端），
-必须重新构建安装。
+Android 安装包内的 `.so` 和前端资源不能在运行时替换，所以更新 CCS 后需要重新构建 APK。
 
-## 上游同步状态
-
-- 当前上游基线：CC Switch `v3.20.0`，`origin/main = 0b5da510`。
-- 当前 Android 分支头：`daa3a2ae`；相对上游保留 34 个 Android/代理定制提交。
-- 同步前回滚分支：`backup/android-sidecar-before-v3.20.0-20260821-222458`。
-- 本次同步补齐了 v3.20.0 新增的 Pi prompt/session 和 OpenCode model 命令；
-  桌面与 sidecar 的统一命令表现为 303 条命令。
-- v3.20.0 将 `CodexOAuthState` 改为直接持有 `Arc<CodexOAuthManager>`；
-  sidecar 初始化已同步调整，并恢复桌面 deep-link 函数的 Android 条件编译。
-
-### 本次验证
-
-- `cargo fmt --check`：通过。
-- `cargo check --lib`：通过。
-- Chat→Responses streaming：27/27 通过。
-- Anthropic→Responses streaming：24/24 通过。
-- Android shim workspace：39/39 通过；3 个 doc test 按设计忽略。
-- 全量 `cargo test --lib`：2654 通过、0 失败、5 忽略。
-- `services::proxy::tests`：86/86 通过，覆盖 Codex auth 恢复、回滚及并发登录保护。
-- Android app data 目录受 SELinux 限制，不能创建 hard link；Codex auth 安全恢复
-  在 Android 改用内核 `renameat2(RENAME_NOREPLACE)`，目标已被新登录创建时原子
-  返回 `EEXIST`，不会覆盖更新的官方认证。桌面仍沿用上游 hard-link 事务。
-
-> 本次完整流程已完成：ZeroTermux 已锁定并打包 `ccs-android-2f8353d`，
-> `ccs-2f8353d` 已正式发布。源码同步、sidecar/前端产物、APK 构建和线上
-> Release 回读均已验证，设备安装后 CCS 才会切换到 v3.20.0。
->
-> 已发布 Debug arm64 APK：`ZeroTermux-0.118.3.63-debug_arm64-v8a.apk`，
-> SHA-256：`a32d4f0f6597a31a658d530baaf94b8db7020563f470c6a2d5cbcef1e78aa472`。
-
-## 与上游同步
-
-分支点见 `git merge-base origin/main android-sidecar`。
-比较改动请以分支点为基准，否则上游后续提交会被误读成本分支的删除：
+## 同步上游
 
 ```bash
+git fetch origin --prune
+git merge-base origin/main android-sidecar
 git diff --stat $(git merge-base origin/main android-sidecar)..android-sidecar
 ```
 
-因改动集中在新增目录、`cfg` 分支和统一命令表，rebase 上游时通常只需处理
-Tauri bootstrap、命令注册表及上游接口类型变化。每次同步后必须重新执行 shim、
-proxy 和 Android 构建验证。
+同步后至少运行：
+
+```bash
+cd src-tauri
+cargo fmt --check
+cargo check --lib
+cargo test --lib
+cargo test --manifest-path android/Cargo.toml
+```
+
+Android app data 目录不允许创建 hard link。Codex auth 的安全恢复在 Android 使用
+`renameat2(RENAME_NOREPLACE)`，避免恢复旧认证时覆盖并发登录产生的新文件。
+
+## 当前验证
+
+最近一次同步的本机结果：
+
+- `cargo check --lib`：通过
+- `cargo test --lib`：2654 通过，0 失败，5 忽略
+- `services::proxy::tests`：86/86 通过
+- Android shim：39/39 通过
+- Chat→Responses：27/27 通过
+- Anthropic→Responses：24/24 通过
+- ZeroTermux arm64 Debug/Release APK：构建成功
+
+## 相关路径
+
+- `src-tauri/android/`：Android shim workspace
+- `src-tauri/src/sidecar.rs`：sidecar HTTP、RPC 和 SSE
+- `src/android-bridge/`：前端 Android 替身
+- `ZeroTermux/app/build.gradle`：APK 使用的 CCS 产物版本和校验值
