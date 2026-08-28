@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { defineConfig, type Plugin } from "vite";
+import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { codeInspectorPlugin } from "code-inspector-plugin";
 
@@ -29,32 +29,6 @@ const androidAlias: Record<string, string> = {
   "@tauri-apps/plugin-log": bridge("plugin-log.ts"),
 };
 
-/**
- * 把移动端覆盖 CSS 内联进 `<head>` 末尾。
- *
- * 用内联而不是 `<link>`，是为了确保它排在 Vite 注入的应用样式表之后——
- * 覆盖层里多数规则和 Tailwind 同特异性，靠顺序取胜，不想靠 `!important`。
- */
-function mobileCssPlugin(): Plugin {
-  return {
-    name: "ccs-android-mobile-css",
-    transformIndexHtml: {
-      order: "post",
-      handler() {
-        const css = fs.readFileSync(bridge("mobile.css"), "utf-8");
-        return [
-          {
-            tag: "style",
-            attrs: { "data-ccs": "mobile-overrides" },
-            children: css,
-            injectTo: "head",
-          },
-        ];
-      },
-    },
-  };
-}
-
 export default defineConfig(({ command }) => ({
   root: "src",
   plugins: [
@@ -64,7 +38,6 @@ export default defineConfig(({ command }) => ({
         bundler: "vite",
       }),
     react(),
-    isAndroid && mobileCssPlugin(),
   ].filter(Boolean),
   base: "./",
   define: isAndroid

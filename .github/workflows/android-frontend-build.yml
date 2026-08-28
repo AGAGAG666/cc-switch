@@ -1,7 +1,7 @@
 # Android WebView 前端产物构建。
 #
 # 与桌面构建的差异只有 `CCS_TARGET=android`：vite 把 9 个 `@tauri-apps/*`
-# 模块 alias 到 `src/android-bridge/`，并注入移动端 CSS 覆盖层。
+# 模块 alias 到 `src/android-bridge/`，页面样式保持上游 CCS 原样。
 # 产物是纯静态 dist（`base: "./"`），可直接塞进 ZeroTermux 的 assets。
 name: Android Frontend Build
 
@@ -96,9 +96,9 @@ jobs:
             exit 1
           fi
 
-          # 移动端覆盖层必须注入。
-          if ! grep -q 'data-ccs="mobile-overrides"' dist-android/index.html; then
-            echo "::error::index.html 未注入移动端 CSS 覆盖层"
+          # Android 只替换 Tauri bridge，页面结构和样式保持上游 CCS 原样。
+          if grep -q 'data-ccs="mobile-overrides"' dist-android/index.html; then
+            echo "::error::产物仍注入 mobile.css 覆盖层"
             exit 1
           fi
 
