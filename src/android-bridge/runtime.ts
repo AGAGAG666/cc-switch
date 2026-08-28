@@ -158,7 +158,29 @@ export function waitForHandshake(): Promise<SidecarHandshake> {
   });
 }
 
-function baseUrl(h: SidecarHandshake): string {
+type SidecarPageLocation = Pick<Location, "protocol" | "hostname" | "port" | "origin">;
+
+/**
+ * 返回 RPC/SSE 的服务根地址。
+ *
+ * 浏览器允许用 `localhost` 或 `127.0.0.1` 打开 sidecar 页面，但二者属于不同
+ * Origin。页面若从 localhost 加载、请求却固定发往 127.0.0.1，浏览器会在请求
+ * 到达 sidecar 前按 CORS 拦截。确认当前页面确实来自同一随机端口的回环地址后，
+ * 直接沿用 location.origin；WebView 和非 sidecar 页面仍走原来的 127.0.0.1。
+ */
+export function resolveSidecarBaseUrl(
+  h: SidecarHandshake,
+  location: SidecarPageLocation = window.location,
+): string {
+  const isLoopback =
+    location.hostname === "localhost" || location.hostname === "127.0.0.1";
+  if (
+    location.protocol === "http:" &&
+    isLoopback &&
+    Number(location.port) === h.port
+  ) {
+    return location.origin;
+  }
   return `http://127.0.0.1:${h.port}`;
 }
 
@@ -198,7 +220,7 @@ export async function invoke<T>(
 
   let res: Response;
   try {
-    res = await fetch(`${baseUrl(h)}/rpc/${encodeURIComponent(cmd)}`, {
+    res = await fetch(`${resolveSidecarBaseUrl(h)}/rpc/${encodeURIComponent(cmd)}`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -278,7 +300,7 @@ async function ensureSource(): Promise<void> {
   if (source) return;
   const h = await waitForHandshake();
   // EventSource 不能自定义 header，token 走 query（仅回环，且 sidecar 同时接受两种）。
-  const url = `${baseUrl(h)}/events?token=${encodeURIComponent(h.token)}`;
+  const url = `${resolveSidecarBaseUrl(h)}/events?token=${encodeURIComponent(h.token)}`;
   const es = new EventSource(url);
   source = es;
 

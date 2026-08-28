@@ -49,10 +49,7 @@ WebView、RPC 和 SSE 都走同一个本地服务。认证使用 `x-ccs-token`�
 
 Android 构建只启用 `src/android-bridge/` 的 Tauri API 替身；React 页面结构、Tailwind 样式和交互保持上游 CCS 原样。针对手机 WebView 的安全区、窄屏布局、触控目标、图标收缩和新版顶栏结构，Android 产物额外注入 `src/android-bridge/mobile.css` 移动适配层；桌面构建不会注入该文件：
 
-```bash
-CCS_TARGET=android pnpm build:android  # 输出 dist-android/
-pnpm build:renderer                   # 桌面前端
-```
+Android Web 产物由 `android-frontend-build.yml` 在 GitHub Actions 生成并上传为 `ccs-android-dist` Artifact。`package.json` 中的 `build:android` 只是 CI 使用的脚本名；本地不把它作为发布构建入口。桌面开发仍使用 `pnpm build:renderer`，与 Android 资产流程分开。
 
 Android alias 只在 `CCS_TARGET=android` 时生效，桌面构建仍使用原来的 Tauri API。
 
@@ -76,12 +73,11 @@ sidecar 和前端分别发布为：
 | `libccsidecar.so` | Android aarch64 原生 sidecar |
 | `ccs-web.zip` | WebView 前端静态文件 |
 
-当前发布版本：
+当前记录的资产基线：
 
-- CC Switch sidecar：`ccs-android-2f8353d`
+- CCS Android 资产：`ccs-android-test-a7ae68dbc238`
 - ZeroTermux APK：`ccs-2f8353d`
-- 上游基线：CC Switch `v3.20.0`，`origin/main = 0b5da510`
-- 当前分支头：`d20ce243`
+- 上游基线、分支头和最新状态：接手时以 Git 实际结果为准，不从本段旧记录猜测
 
 ZeroTermux 在 `app/build.gradle` 中锁定 tag、SHA-256 和文件大小。更新流程是：
 
@@ -131,3 +127,17 @@ Android app data 目录不允许创建 hard link。Codex auth 的安全恢复在
 - `src-tauri/src/sidecar.rs`：sidecar HTTP、RPC 和 SSE
 - `src/android-bridge/`：前端 Android 替身
 - `ZeroTermux/app/build.gradle`：APK 使用的 CCS 产物版本和校验值
+
+
+## Termux-CCS 固定流程
+
+本 README 只说明 Android sidecar 的技术实现。资产构建、CI、Artifact 下载、ZIP 根目录校验、sidecar 复用、Release 双资产上传、ZeroTermux `app/build.gradle` 锁定、APK 云端构建和手机回归，统一执行 Termux-CCS 知识库的 [唯一构建、测试与发布流程](../../codex/Termux/docs/build-and-release.md) 的 S0-S10。
+
+固定要求：
+
+- `android-frontend-build.yml` 负责 Android Web Artifact；
+- `android-shim-probe.yml`、`android-sidecar-build.yml`、`android-proxy-tests.yml` 负责 shim、sidecar 和代理测试；
+- 同一 CCS 资产 tag 必须同时提供 `ccs-web.zip` 与 `libccsidecar.so`；
+- ZeroTermux 只消费已发布且哈希通过的资产，再由自己的 `build.yml` 云端构建 APK；
+- 手机只安装经过文件级校验的 APK，不直接以独立 `ccs2` 作为最终入口；
+- 提交、推送、Release、安装和删除都按 SOP 的确认闸门处理。
