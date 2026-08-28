@@ -47,7 +47,7 @@ WebView、RPC 和 SSE 都走同一个本地服务。认证使用 `x-ccs-token`�
 
 ## 前端侧
 
-Android 构建只启用 `src/android-bridge/` 的 Tauri API 替身；React 页面结构、Tailwind 样式和交互保持上游 CCS 原样，不注入额外的移动端 CSS 覆盖层：
+Android 构建只启用 `src/android-bridge/` 的 Tauri API 替身；React 页面结构、Tailwind 样式和交互保持上游 CCS 原样。针对手机 WebView 的安全区、窄屏布局、触控目标、图标收缩和新版顶栏结构，Android 产物额外注入 `src/android-bridge/mobile.css` 移动适配层；桌面构建不会注入该文件：
 
 ```bash
 CCS_TARGET=android pnpm build:android  # 输出 dist-android/

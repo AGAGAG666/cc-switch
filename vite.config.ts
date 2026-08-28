@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { defineConfig } from "vite";
+import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
 import { codeInspectorPlugin } from "code-inspector-plugin";
 
@@ -29,6 +29,30 @@ const androidAlias: Record<string, string> = {
   "@tauri-apps/plugin-log": bridge("plugin-log.ts"),
 };
 
+/**
+ * Android 构建只在 WebView 环境启用移动端适配层；React 页面源码仍跟随上游 CCS。
+ * CSS 内联到应用样式之后，确保移动端规则只在 Android 产物中生效。
+ */
+function mobileCssPlugin(): Plugin {
+  return {
+    name: "ccs-android-mobile-css",
+    transformIndexHtml: {
+      order: "post",
+      handler() {
+        const css = fs.readFileSync(bridge("mobile.css"), "utf-8");
+        return [
+          {
+            tag: "style",
+            attrs: { "data-ccs": "mobile-overrides" },
+            children: css,
+            injectTo: "head",
+          },
+        ];
+      },
+    },
+  };
+}
+
 export default defineConfig(({ command }) => ({
   root: "src",
   plugins: [
@@ -38,6 +62,7 @@ export default defineConfig(({ command }) => ({
         bundler: "vite",
       }),
     react(),
+    isAndroid && mobileCssPlugin(),
   ].filter(Boolean),
   base: "./",
   define: isAndroid
