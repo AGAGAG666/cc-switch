@@ -143,7 +143,7 @@ body {
 /* ── 3. 顶栏（与屏幕宽度无关，触屏一律生效） ──────────────── */
 /*
  * 竖屏 412dp 和横屏 915dp 都放不下桌面那一整行：横屏实测「新增供应商」的 +
- * 按钮右缘在 935px，超出 915px 视口 20px（它在 `overflow-x-hidden` 里，
+ * 按钮右缘在 935px，超出 915px 视口 20px（它在页签容器里，
  * 只能横向滑动才碰得到）。所以这些规则不放在 `max-width: 640px` 里。
  */
 @media (hover: none) and (pointer: coarse) {
@@ -153,7 +153,7 @@ body {
    * 桌面版把 logo、设置、项目切换器、8 个 app 类型页签、4 个功能入口全塞进
    * 一行 64px 的 `position: fixed` 栏里；`App.tsx:1058` 再给内容容器写死
    * `paddingTop: 64`。412dp 上实测 app 页签容器只剩 81px 可视宽、内容 636px，
-   * 而它是 `overflow-x-hidden` —— 除第一个 app 外全部被裁掉且无法滚动到，
+   * 而它是 `overflow-hidden` —— 除第一个 app 外全部被裁掉且无法滚动到，
    * Codex 页面在手机上根本进不去。
    *
    * 改法：窄屏让顶栏退回文档流并允许换行。滚动容器是 <main>（`overflow-y-auto`）
@@ -190,7 +190,7 @@ body {
   /* 右半区（项目切换器 + 页签条）独占整行：它原本是 `flex-1 min-w-0`，
      只能拿到 `justify-between` 分给它的那半宽（412dp 实测 220px），
      里面的页签条再怎么设都超不出这 220px。 */
-  header.fixed > div > div:has(.overflow-x-hidden) {
+  header.fixed > div > div:has(.overflow-hidden) {
     flex-basis: 100%;
     justify-content: flex-start;
   }
@@ -202,21 +202,21 @@ body {
    *   - 915dp：剩 766px > 628px → 与项目切换器同行，顶栏省下一整行
    * overflow-x:auto 只作超宽兜底（页签数量继续增长时）。
    */
-  header .overflow-x-hidden {
+  header .overflow-hidden {
     flex-basis: max-content;
     overflow-x: auto;
     scrollbar-width: none;
     padding-top: 0;
     padding-bottom: 0;
   }
-  header .overflow-x-hidden::-webkit-scrollbar {
+  header .overflow-hidden::-webkit-scrollbar {
     display: none;
   }
-  header .overflow-x-hidden {
+  header .overflow-hidden {
     padding-right: 0;
   }
   /* app 页签组本身也允许换行：将来页签变多（>8）时不必靠横向滑动。 */
-  header .overflow-x-hidden .bg-muted {
+  header .overflow-hidden .bg-muted {
     flex-wrap: wrap;
     row-gap: 4px;
   }
@@ -224,7 +224,7 @@ body {
      内层是 `shrink-0` 的单行 628px（8 个 app 页签 + Skills/Prompts/会话/MCP
      4 个功能入口），412dp 放不下：解除 shrink-0 让它折成两行，功能入口
      不必靠横向滑动才能碰到。上面的 overflow-x:auto 作为超宽兜底保留。 */
-  header .overflow-x-hidden > .ml-auto {
+  header .overflow-hidden > .ml-auto {
     margin-left: 0;
     flex-shrink: 1;
     flex-wrap: wrap;
