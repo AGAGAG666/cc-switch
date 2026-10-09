@@ -620,7 +620,7 @@ const UnifiedSkillsPanel = React.forwardRef<
   }));
 
   return (
-    <div className="px-6 flex flex-col flex-1 min-h-0 overflow-hidden">
+    <div className="ccs-skills-panel px-6 flex flex-col flex-1 min-h-0 overflow-hidden">
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0 flex-1">
           <AppCountBar
@@ -631,6 +631,7 @@ const UnifiedSkillsPanel = React.forwardRef<
             onToggleAll={handleToggleAll}
             pendingApp={pendingApp}
             disabled={interactionBlocked}
+            className="ccs-skills-count-bar"
           />
         </div>
         <div
@@ -800,7 +801,7 @@ const InstalledSkillListItem: React.FC<InstalledSkillListItemProps> = ({
   }, [skill.repoOwner, skill.repoName, t]);
 
   return (
-    <ListItemRow isLast={isLast}>
+    <ListItemRow isLast={isLast} className="ccs-skills-list-row">
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
           <span className="font-medium text-sm text-foreground truncate">
@@ -837,15 +838,17 @@ const InstalledSkillListItem: React.FC<InstalledSkillListItemProps> = ({
         )}
       </div>
 
-      <AppToggleGroup
-        apps={skill.apps}
-        onToggle={(app, enabled) => onToggleApp(skill.id, app, enabled)}
-        appIds={appIds}
-        disabled={actionsDisabled}
-      />
+      <div className="ccs-skills-app-toggles">
+        <AppToggleGroup
+          apps={skill.apps}
+          onToggle={(app, enabled) => onToggleApp(skill.id, app, enabled)}
+          appIds={appIds}
+          disabled={actionsDisabled}
+        />
+      </div>
 
       <div
-        className="flex-shrink-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+        className="ccs-skills-row-actions flex-shrink-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
         style={hasUpdate ? { opacity: 1 } : undefined}
       >
         {hasUpdate && onUpdate && (

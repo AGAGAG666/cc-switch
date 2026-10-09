@@ -13,6 +13,7 @@ interface AppCountBarProps {
   onToggleAll?: (app: AppId, enabled: boolean) => void | Promise<void>;
   pendingApp?: AppId | null;
   disabled?: boolean;
+  className?: string;
 }
 
 export const AppCountBar: React.FC<AppCountBarProps> = ({
@@ -23,6 +24,7 @@ export const AppCountBar: React.FC<AppCountBarProps> = ({
   onToggleAll,
   pendingApp,
   disabled = false,
+  className,
 }) => {
   const { t } = useTranslation();
   const bulkToggleEnabled = totalCount !== undefined && !!onToggleAll;
@@ -30,7 +32,12 @@ export const AppCountBar: React.FC<AppCountBarProps> = ({
   const hasPendingBulkToggle = pendingApp !== undefined && pendingApp !== null;
 
   return (
-    <div className="mb-4 flex flex-shrink-0 items-center gap-4 rounded-xl border border-white/10 px-6 py-4 glass">
+    <div
+      className={cn(
+        "mb-4 flex flex-shrink-0 items-center gap-4 rounded-xl border border-white/10 px-6 py-4 glass",
+        className,
+      )}
+    >
       <Badge
         variant="outline"
         className="h-7 shrink-0 whitespace-nowrap bg-background/50 px-3"

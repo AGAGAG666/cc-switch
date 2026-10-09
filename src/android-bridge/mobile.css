@@ -408,3 +408,73 @@ svg.lucide {
     min-width: 0;
   }
 }
+
+/* ── 7. Skills 管理页窄屏布局 ───────────────────────────────── */
+@media (max-width: 640px) {
+  /* 页面级操作有 5 个文字按钮，桌面单行会把后半截裁到屏幕外。 */
+  header .ccs-skills-header-actions {
+    flex: 1 1 100%;
+    min-width: 0;
+    padding-top: 0;
+    padding-bottom: 6px;
+  }
+  header .ccs-skills-header-actions > div {
+    width: 100%;
+    min-width: 0;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+    row-gap: 4px;
+  }
+
+  .ccs-skills-panel {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  /* 已安装 / 各应用计数不再靠隐藏横向滚动，直接在卡片内换行。 */
+  .ccs-skills-count-bar {
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 12px;
+  }
+  .ccs-skills-count-bar > div {
+    flex-basis: 100%;
+    overflow: visible;
+  }
+  .ccs-skills-count-bar > div > div {
+    width: 100%;
+    min-width: 0;
+    margin-left: 0;
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  /* 触屏规则把应用图标扩大到 40px；保持桌面单行会把名称挤成 0 宽。 */
+  .ccs-skills-list-row {
+    align-items: stretch;
+    flex-wrap: wrap;
+    column-gap: 12px;
+    row-gap: 8px;
+    padding: 12px;
+  }
+  .ccs-skills-list-row > .flex-1 {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+  .ccs-skills-list-row > .flex-1 > .flex {
+    flex-wrap: wrap;
+  }
+  .ccs-skills-app-toggles {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .ccs-skills-app-toggles > div {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+  .ccs-skills-row-actions {
+    margin-left: auto;
+    opacity: 1;
+  }
+}

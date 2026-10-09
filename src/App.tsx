@@ -1411,7 +1411,14 @@ function App() {
               )}
             </div>
             {/* 固定右端：主操作（添加供应商等）shrink-0，任何配置下不被挤出 */}
-            <div className="flex shrink-0 items-center py-4">
+            <div
+              className={cn(
+                "flex shrink-0 items-center py-4",
+                (currentView === "skills" ||
+                  currentView === "skillsDiscovery") &&
+                  "ccs-skills-header-actions",
+              )}
+            >
               <div
                 className="flex shrink-0 items-center gap-1.5"
                 style={{ WebkitAppRegion: "no-drag" } as any}
