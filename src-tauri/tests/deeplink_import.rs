@@ -7,6 +7,24 @@ mod support;
 use support::{ensure_test_home, reset_test_fs, test_mutex};
 
 #[test]
+fn deeplink_parser_accepts_android_codex_provider_link_shape() {
+    let url = "ccswitch://v1/import?resource=provider&app=codex&name=My+Codex&endpoint=https%3A%2F%2Fapi.example.test%2Fv1&apiKey=sk-test-placeholder&model=big-pickle&homepage=https%3A%2F%2Fexample.test&enabled=true";
+    let request = parse_deeplink_url(url).expect("parse Android provider deeplink");
+
+    assert_eq!(request.resource, "provider");
+    assert_eq!(request.app.as_deref(), Some("codex"));
+    assert_eq!(request.name.as_deref(), Some("My Codex"));
+    assert_eq!(
+        request.endpoint.as_deref(),
+        Some("https://api.example.test/v1")
+    );
+    assert_eq!(request.api_key.as_deref(), Some("sk-test-placeholder"));
+    assert_eq!(request.model.as_deref(), Some("big-pickle"));
+    assert_eq!(request.homepage.as_deref(), Some("https://example.test"));
+    assert_eq!(request.enabled, Some(true));
+}
+
+#[test]
 fn deeplink_import_claude_provider_persists_to_db() {
     let _guard = test_mutex().lock().expect("acquire test mutex");
     reset_test_fs();

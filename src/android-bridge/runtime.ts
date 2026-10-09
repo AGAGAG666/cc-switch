@@ -40,6 +40,8 @@ declare global {
       openPath?: (path: string) => void;
       pickFolder?: (requestId: number) => void;
       homeDir?: () => string;
+      /** 取出宿主暂存的一条 ccswitch:// 入站链接；读取后即从宿主清除。 */
+      takePendingDeepLink?: () => string;
       restart?: () => void;
       exit?: (code: number) => void;
       minimize?: () => void;
@@ -48,6 +50,8 @@ declare global {
     };
     /** 宿主完成目录选择后回调（由本模块安装）。 */
     __ccsResolveFolderPick?: (requestId: number, path: string | null) => void;
+    /** 新 Intent 到达时由宿主调用，通知确认弹窗拉取暂存链接。 */
+    __ccsPullPendingDeepLink?: () => void;
   }
 }
 
@@ -158,7 +162,10 @@ export function waitForHandshake(): Promise<SidecarHandshake> {
   });
 }
 
-type SidecarPageLocation = Pick<Location, "protocol" | "hostname" | "port" | "origin">;
+type SidecarPageLocation = Pick<
+  Location,
+  "protocol" | "hostname" | "port" | "origin"
+>;
 
 /**
  * 返回 RPC/SSE 的服务根地址。
@@ -220,14 +227,17 @@ export async function invoke<T>(
 
   let res: Response;
   try {
-    res = await fetch(`${resolveSidecarBaseUrl(h)}/rpc/${encodeURIComponent(cmd)}`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-CCS-Token": h.token,
+    res = await fetch(
+      `${resolveSidecarBaseUrl(h)}/rpc/${encodeURIComponent(cmd)}`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CCS-Token": h.token,
+        },
+        body: JSON.stringify(args ?? {}),
       },
-      body: JSON.stringify(args ?? {}),
-    });
+    );
   } catch (e) {
     throw `无法连接 cc-switch 服务（${cmd}）：${String(e)}`;
   }
@@ -386,7 +396,11 @@ export async function requestHostAction(
 ): Promise<void> {
   const host = resolveHost();
   if (!host) {
-    console.warn("[ccs] 宿主未注入 __CCS_HOST__/__CCS_NATIVE__，忽略动作", kind, value);
+    console.warn(
+      "[ccs] 宿主未注入 __CCS_HOST__/__CCS_NATIVE__，忽略动作",
+      kind,
+      value,
+    );
     return;
   }
   switch (kind) {
