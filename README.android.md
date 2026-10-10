@@ -1,92 +1,126 @@
 # Android sidecar 分支
 
-这个分支把 CC Switch 编译成 Android aarch64 sidecar，供
-[ZeroTermux-CCS](https://github.com/AGAGAG666/ZeroTermux-CCS) 内嵌使用。
-前端仍是 CC Switch 的 React 页面，Android 宿主负责启动 sidecar、提供 WebView 和少量系统能力。
+`android-sidecar` 分支把 CC Switch 编译成 Android aarch64 sidecar，供 [ZeroTermux-CCS](https://github.com/AGAGAG666/ZeroTermux-CCS) 内嵌使用。前端仍以 CC Switch React 页面为主体，Android 专用代码只补齐 Tauri API 替身、WebView 宿主能力、移动端布局和 sidecar 运行环境。
 
-本分支不是上游 CC Switch 的官方发布分支，也没有得到上游作者背书。上游仓库是
-[farion1231/cc-switch](https://github.com/farion1231/cc-switch)，许可证保持 MIT 不变。
+本分支不是上游 CC Switch 的官方发布分支，也没有得到上游作者背书。原版上游为 [farion1231/cc-switch](https://github.com/farion1231/cc-switch)，当前对齐版本为 `v3.20.0`，许可证保持 MIT 不变。
 
-## 适配方式
-
-Android 版没有桌面 Tauri 窗口。适配集中在两层：
+## 适配结构
 
 | 部分 | 做法 |
 | --- | --- |
-| Rust 后端 | 用 Android shim 替代 Tauri 及部分插件，核心业务代码尽量保持上游结构 |
-| React 前端 | 在 Android 构建中把 `@tauri-apps/*` alias 到 `src/android-bridge/` |
+| Rust 后端 | 用 `src-tauri/android/` shim 替代 Tauri runtime 和部分插件，复用 CC Switch Rust 核心 |
+| Android sidecar | `src-tauri/src/sidecar.rs` 提供 HTTP、RPC、SSE 和 Web 静态资源服务 |
+| React 前端 | Android 构建时把 `@tauri-apps/*` alias 到 `src/android-bridge/` |
+| 移动端 UI | 只在 Android 构建注入 `src/android-bridge/mobile.css`，必要时通过 scoped class 标记目标组件 |
+| Android 宿主 | ZeroTermux 负责 WebView、目录选择、Intent、前台服务和 sidecar 生命周期 |
 
-少数需要跟随上游 API 的地方放在 Android 条件编译、sidecar 入口和统一命令表中。这样同步上游时，主要处理这些接缝，不必重写整套业务逻辑。
+桌面构建继续使用真实 Tauri API；Android alias 和移动 CSS 只在 `CCS_TARGET=android` 时生效。
 
-## Rust 侧
+## Sidecar 服务
 
-`src-tauri/android/` 是独立 workspace，包含以下替身和测试 crate：
+Android 下 `src-tauri/src/main.rs` 调用 `run_sidecar`：
 
-| crate | 用途 |
+1. 监听回环地址上的运行端口；
+2. 使用 `--webroot` 托管 `ccs-web.zip` 解包后的静态文件；
+3. 通过 stdout 输出端口与 token；
+4. 在 `index.html` 的 `<head>` 注入 `window.__CCS_SIDECAR__`；
+5. 用 `/rpc/{command}` 和 `/events` 提供命令与 SSE。
+
+Web 页面、RPC 和 SSE 同源。ZeroTermux 默认把 Web 服务配置为 `17132`，也允许用户修改；handshake 中的实际端口始终是前端依据。Codex/OpenCode 的路由代理端口为 `15721`，它与 Web 端口是两项独立配置。认证使用 `x-ccs-token`，SSE 使用 `?token=`；不要改成通用 `Authorization: Bearer`。
+
+## Android bridge
+
+主要入口：
+
+- `src/android-bridge/runtime.ts`：handshake、RPC、SSE 和宿主动作；
+- `src/android-bridge/deeplink.ts`：从 ZeroTermux 一次性取回待处理 deep link；
+- `src/components/DeepLinkImportDialog.tsx`：解析结果展示、风险确认和导入；
+- `src/android-bridge/mobile.css`：Android 窄屏和触控覆盖层。
+
+需要 Android `Context` 的动作由宿主处理，Rust sidecar 不直接启动 Activity。目录选择由 ZeroTermux 的真实路径选择器完成，不使用只返回 `content://` 的 SAF 树 URI。
+
+### `ccswitch://v1/import`
+
+ZeroTermux 只接收精确的 `ccswitch://v1/import`，通过不含原始 URI 的 JavaScript 通知让前端调用 `takePendingDeepLink()`。前端随后使用现有 `parse_deeplink` Rust 命令，并继续显示 CC Switch 原有确认弹窗。
+
+provider 链接可能在 query 中携带 `apiKey`：
+
+- 不记录完整 URI；
+- 不把真实 key 写进测试、README、Issue 或提交；
+- 测试使用 `sk-test-placeholder` 和 `example.test`；
+- 已公开的 key 必须轮换。
+
+## Skills 移动端布局
+
+Android 触控规则会把图标按钮扩大到可点击尺寸，桌面单行布局可能因此把 Skill 名称和描述挤到零宽。当前实现使用 Skills 专用 class：
+
+- 顶部操作按钮允许换行；
+- 应用计数标签在卡片内换行；
+- 名称和描述占满第一行；
+- 应用开关和删除按钮放在下一行。
+
+不要用影响所有 `.flex` 或所有列表项的全局覆盖替代这些 scoped 规则。
+
+## Rust shim workspace
+
+`src-tauri/android/` 是独立 workspace，包含 Tauri、插件、剪贴板、自动启动和宏替身，以及 `shim-selftest`。其中 `Cargo.lock` 是本地 Cargo 自动生成物，当前不入库；CI 没有使用 `--locked`。需要时由 Cargo 重新生成，不要把本地 Lock 或 `target/` 当作发布资产。
+
+命令注册的单一来源是 `src-tauri/src/command_list.rs`。新增或修改命令时必须同时验证桌面 Tauri 和 Android RPC 参数名，不能维护两份手工命令表。
+
+## 构建与测试
+
+```bash
+pnpm typecheck:android
+pnpm test:unit
+pnpm build:android
+
+cd src-tauri
+cargo test --test deeplink_import
+```
+
+本地 `dist-android/` 只是可重新生成的构建输出，不提交、不作为正式资产。正式产物由 GitHub Actions 生成：
+
+| 工作流 | 使用场景 |
 | --- | --- |
-| `tauri-shim` | 提供 `app`、`plugins`、`rpc`、`runtime`、`state`、`window` 等接口 |
-| `tauri-shim-macros` | 提供 `#[command]` 和 `generate_handler!` 的 Android 实现 |
-| `arboard-shim` | 把剪贴板操作转交给 Termux |
-| `auto-launch-shim` | Android 上的开机启动占位实现 |
-| `tauri-plugin-*` shim | 对话框、打开外部路径、存储和更新接口 |
-| `shim-selftest` | 用上游真实命令签名测试 shim 行为 |
+| `android-frontend-build.yml` | React/bridge/CSS 修改，生成 `ccs-android-dist` |
+| `android-sidecar-build.yml` | Rust sidecar 或命令面修改，生成 `ccs-sidecar_arm64-v8a` |
+| `android-shim-probe.yml` | `src-tauri/android/` shim 或宏修改 |
+| `android-proxy-tests.yml` | 代理、协议转换、转发或流式响应修改 |
 
-v3.20.0 的桌面和 Android sidecar 共用 303 条命令。命令表只有一份，位于
-`src-tauri/src/command_list.rs`。
+只要求覆盖本次改动范围的工作流，但需要新 ELF 时必须运行 Sidecar Build。
 
-### sidecar 启动
+## 当前发布基线
 
-`src-tauri/src/main.rs` 在 Android 下调用 `run_sidecar`，sidecar 会：
+发布来源：
 
-1. 监听本机随机端口。
-2. 用 `--webroot` 托管前端静态文件。
-3. 通过 stdout 输出端口和 token。
-4. 在 `index.html` 的 `<head>` 中注入 `window.__CCS_SIDECAR__`。
+- Branch：`android-sidecar`
+- 资产来源提交：`f3291ac67659784ed39288828a944d68e7c39abb`
 
-WebView、RPC 和 SSE 都走同一个本地服务。认证使用 `x-ccs-token`，不是 `Authorization: Bearer`。
+资产 Release：`ccs-android-f3291ac6`
 
-## 前端侧
+| 文件 | 大小 | SHA-256 |
+| --- | ---: | --- |
+| `ccs-web.zip` | 2,080,953 bytes | `5b446fa6eda7ab209b7ffa5dabb731b363a8dfd55fc82f56ba9b459d362b021b` |
+| `libccsidecar.so` | 17,133,944 bytes | `668330a171b699704c380ae979d146d9ae9d99ecb630fca05fa17d922af040f4` |
 
-Android 构建只启用 `src/android-bridge/` 的 Tauri API 替身；React 页面结构、Tailwind 样式和交互保持上游 CCS 原样。针对手机 WebView 的安全区、窄屏布局、触控目标、图标收缩和新版顶栏结构，Android 产物额外注入 `src/android-bridge/mobile.css` 移动适配层；桌面构建不会注入该文件：
+成功 Run：
 
-Android Web 产物由 `android-frontend-build.yml` 在 GitHub Actions 生成并上传为 `ccs-android-dist` Artifact。`package.json` 中的 `build:android` 只是 CI 使用的脚本名；本地不把它作为发布构建入口。桌面开发仍使用 `pnpm build:renderer`，与 Android 资产流程分开。
+- Android Frontend Build：`37899238675`；
+- Android Sidecar Build：`37899238650`。
 
-Android alias 只在 `CCS_TARGET=android` 时生效，桌面构建仍使用原来的 Tauri API。
+消费该资产的 ZeroTermux-CCS 正式 Release 为 `ccs-f3291ac6`。真机已确认 `ccswitch://v1/import` 可用，Skills 管理页窄屏显示正常。
 
-## CI 工作流
+## 与 ZeroTermux 的发布关系
 
-| 工作流 | 用途 |
-| --- | --- |
-| `android-shim-probe.yml` | 编译和测试 Android shim |
-| `android-sidecar-build.yml` | 交叉编译 `aarch64-linux-android` sidecar |
-| `android-frontend-build.yml` | 构建 Android WebView 前端 |
-| `android-proxy-tests.yml` | 在宿主 target 跑代理层单测 |
+1. 在 `android-sidecar` 完成修改、测试和推送；
+2. 由 Actions 生成 Web 与 sidecar；
+3. 同一 `ccs-android-<commit>` Release 同时发布 `ccs-web.zip` 和 `libccsidecar.so`；
+4. ZeroTermux `app/build.gradle` 锁定 Tag、size、SHA-256；
+5. ZeroTermux Actions 构建 APK；
+6. 从 APK 解出两个资产，与 Release 和 Gradle 三方比对；
+7. 手机回归通过后再发布 ZeroTermux-CCS Release。
 
-sidecar 构建会检查 Android 依赖图，避免桌面 Tauri、OpenSSL 和 aws-lc 相关依赖混入错误的 target。
-
-## 产物和 ZeroTermux 集成
-
-sidecar 和前端分别发布为：
-
-| 文件 | 用途 |
-| --- | --- |
-| `libccsidecar.so` | Android aarch64 原生 sidecar |
-| `ccs-web.zip` | WebView 前端静态文件 |
-
-当前记录的资产基线：
-
-- CCS Android 资产：`ccs-android-test-a7ae68dbc238`
-- ZeroTermux APK：`ccs-2f8353d`
-- 上游基线、分支头和最新状态：接手时以 Git 实际结果为准，不从本段旧记录猜测
-
-ZeroTermux 在 `app/build.gradle` 中锁定 tag、SHA-256 和文件大小。更新流程是：
-
-1. 修改 `android-sidecar` 并跑测试。
-2. 构建 sidecar 和前端，发布新 `ccs-android-<commit>`。
-3. 更新 ZeroTermux 的 `ccsArtifactTag`、SHA-256 和 size。
-4. 构建 APK，再检查 APK 内的 sidecar 和前端是否与发布资产一致。
-
-Android 安装包内的 `.so` 和前端资源不能在运行时替换，所以更新 CCS 后需要重新构建 APK。
+完整确认闸门见本地外部知识库 `~/工作区/codex/Termux/docs/build-and-release.md`。仓库内文档和外部交接文档是两个范围；收到笼统的“更新文档”请求时必须先确认目标范围。
 
 ## 同步上游
 
@@ -96,48 +130,4 @@ git merge-base origin/main android-sidecar
 git diff --stat $(git merge-base origin/main android-sidecar)..android-sidecar
 ```
 
-同步后至少运行：
-
-```bash
-cd src-tauri
-cargo fmt --check
-cargo check --lib
-cargo test --lib
-cargo test --manifest-path android/Cargo.toml
-```
-
-Android app data 目录不允许创建 hard link。Codex auth 的安全恢复在 Android 使用
-`renameat2(RENAME_NOREPLACE)`，避免恢复旧认证时覆盖并发登录产生的新文件。
-
-## 当前验证
-
-最近一次同步的本机结果：
-
-- `cargo check --lib`：通过
-- `cargo test --lib`：2654 通过，0 失败，5 忽略
-- `services::proxy::tests`：86/86 通过
-- Android shim：39/39 通过
-- Chat→Responses：27/27 通过
-- Anthropic→Responses：24/24 通过
-- ZeroTermux arm64 Debug/Release APK：构建成功
-
-## 相关路径
-
-- `src-tauri/android/`：Android shim workspace
-- `src-tauri/src/sidecar.rs`：sidecar HTTP、RPC 和 SSE
-- `src/android-bridge/`：前端 Android 替身
-- `ZeroTermux/app/build.gradle`：APK 使用的 CCS 产物版本和校验值
-
-
-## Termux-CCS 固定流程
-
-本 README 只说明 Android sidecar 的技术实现。资产构建、CI、Artifact 下载、ZIP 根目录校验、sidecar 复用、Release 双资产上传、ZeroTermux `app/build.gradle` 锁定、APK 云端构建和手机回归，统一执行 Termux-CCS 知识库的 [唯一构建、测试与发布流程](../../codex/Termux/docs/build-and-release.md) 的 S0-S10。
-
-固定要求：
-
-- `android-frontend-build.yml` 负责 Android Web Artifact；
-- `android-shim-probe.yml`、`android-sidecar-build.yml`、`android-proxy-tests.yml` 负责 shim、sidecar 和代理测试；
-- 同一 CCS 资产 tag 必须同时提供 `ccs-web.zip` 与 `libccsidecar.so`；
-- ZeroTermux 只消费已发布且哈希通过的资产，再由自己的 `build.yml` 云端构建 APK；
-- 手机只安装经过文件级校验的 APK，不直接以独立 `ccs2` 作为最终入口；
-- 提交、推送、Release、安装和删除都按 SOP 的确认闸门处理。
+同步上游后重新检查 Android alias、shim、命令表、移动 CSS 和 deep-link 接缝，不根据旧测试数量判断完成。
