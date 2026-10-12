@@ -60,6 +60,9 @@ jobs:
       - name: TypeScript type check (android alias)
         run: pnpm typecheck:android
 
+      - name: Android bridge regression tests
+        run: pnpm exec vitest run src/android-bridge/runtime.test.ts src/android-bridge/deeplink.test.ts
+
       - name: Build renderer (android)
         run: pnpm build:android
 
@@ -111,4 +114,21 @@ jobs:
         with:
           name: ccs-android-dist
           path: dist-android/
+          if-no-files-found: error
+
+      - name: Package Web for APK test builds
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist-android
+          python3 -m zipfile -c "$RUNNER_TEMP/ccs-web.zip" index.html assets
+          python3 -c 'import sys, zipfile; z=zipfile.ZipFile(sys.argv[1]); names=z.namelist(); assert "index.html" in names; assert all(n == "index.html" or n.startswith("assets/") for n in names); assert z.testzip() is None' "$RUNNER_TEMP/ccs-web.zip"
+          sha256sum "$RUNNER_TEMP/ccs-web.zip"
+          stat -c '%s bytes' "$RUNNER_TEMP/ccs-web.zip"
+
+      - name: Upload packaged Web
+        uses: actions/upload-artifact@v4
+        with:
+          name: ccs-android-web
+          path: ${{ runner.temp }}/ccs-web.zip
           if-no-files-found: error
