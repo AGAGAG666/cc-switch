@@ -21,6 +21,12 @@ use std::net::{Ipv4Addr, SocketAddr};
 use std::path::{Component, PathBuf};
 use std::sync::Arc;
 
+use crate::session_manager::{
+    self,
+    cache::chunk_ranges,
+    content,
+    model::{ImageRef, TranscriptChunk},
+};
 use axum::body::Body;
 use axum::extract::{Path, Query, State as AxumState};
 use axum::http::{header, HeaderMap, HeaderValue, Response, StatusCode};
@@ -29,9 +35,10 @@ use axum::response::IntoResponse;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde_json::{json, Value};
+use std::convert::Infallible;
 use tauri::rpc::{Handlers, RpcContext};
 use tauri::{AppHandle, EventSink, HostBridge, Manager, Wry};
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 
 use crate::store::AppState;
 
@@ -205,6 +212,104 @@ async fn rpc(
             log::debug!("命令 {cmd} 失败: {msg}");
             (StatusCode::OK, Json(json!({ "ok": false, "error": msg })))
         }
+    }
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SessionRequest {
+    provider_id: String,
+    source_path: String,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SessionImageRequest {
+    provider_id: String,
+    source_path: String,
+    image: ImageRef,
+}
+
+/// Unlike the event broadcast, this stream has a bounded per-request queue.
+/// Large transcripts cannot silently drop chunks when WebView is slow to read.
+async fn session_messages_stream(
+    AxumState(shared): AxumState<Arc<Shared>>,
+    headers: HeaderMap,
+    Json(request): Json<SessionRequest>,
+) -> Response<Body> {
+    if !authorized(&shared, &headers) {
+        return plain(StatusCode::UNAUTHORIZED, "invalid sidecar token");
+    }
+    let (sender, receiver) = mpsc::channel::<TranscriptChunk>(8);
+    tokio::task::spawn_blocking(move || {
+        let send = |chunk: TranscriptChunk| sender.blocking_send(chunk).is_ok();
+        let loaded =
+            match session_manager::load_transcript(&request.provider_id, &request.source_path) {
+                Ok(loaded) => loaded,
+                Err(message) => {
+                    let _ = send(TranscriptChunk::Error { message });
+                    return;
+                }
+            };
+        let transcript = loaded.transcript;
+        if !send(TranscriptChunk::Header {
+            total: transcript.messages.len(),
+            turns: transcript.turns.clone(),
+            cached: loaded.cached,
+            parse_ms: loaded.parse_ms,
+        }) {
+            return;
+        }
+        for (start, end) in chunk_ranges(&transcript.message_bytes) {
+            if !send(TranscriptChunk::Messages {
+                start,
+                messages: transcript.messages[start..end].to_vec(),
+            }) {
+                return;
+            }
+        }
+        let _ = send(TranscriptChunk::Done {
+            payload_bytes: transcript.approx_bytes as u64,
+        });
+    });
+    let stream = futures::stream::unfold(receiver, |mut rx| async move {
+        rx.recv().await.map(|chunk| {
+            let data = serde_json::to_string(&chunk).unwrap_or_else(|_| {
+                r#"{"type":"error","message":"session chunk encoding failed"}"#.to_string()
+            });
+            (Ok::<_, Infallible>(Event::default().data(data)), rx)
+        })
+    });
+    Sse::new(stream).into_response()
+}
+
+async fn session_image_binary(
+    AxumState(shared): AxumState<Arc<Shared>>,
+    headers: HeaderMap,
+    Json(request): Json<SessionImageRequest>,
+) -> Response<Body> {
+    if !authorized(&shared, &headers) {
+        return plain(StatusCode::UNAUTHORIZED, "invalid sidecar token");
+    }
+    let result = tokio::task::spawn_blocking(move || {
+        let source = content::validate_source(&request.provider_id, &request.source_path)?;
+        content::load_image(&source, &request.image)
+    })
+    .await;
+    match result {
+        Ok(Ok(bytes)) => {
+            let mut response = Response::new(Body::from(bytes));
+            response.headers_mut().insert(
+                header::CONTENT_TYPE,
+                HeaderValue::from_static("application/octet-stream"),
+            );
+            response
+        }
+        Ok(Err(message)) => plain(StatusCode::BAD_REQUEST, &message),
+        Err(_) => plain(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "session image read failed",
+        ),
     }
 }
 
@@ -528,54 +633,21 @@ async fn serve(port: u16, webroot: Option<PathBuf>) -> Result<(), String> {
         .route("/health", get(health))
         .route("/events", get(events))
         .route("/rpc", get(command_names))
-        .route("/rpc/:cmd", post(rpc));
+        .route("/rpc/:cmd", post(rpc))
+        .route(
+            "/rpc-stream/session-messages",
+            post(session_messages_stream),
+        )
+        .route("/rpc-binary/session-image", post(session_image_binary));
     if has_webroot {
         router = router
             .route("/", get(static_index))
             .route("/*path", get(static_asset));
     }
-    // Android sidecar 缺少桌面版 setup 里的 restore_proxy_state_on_startup。
-    // 必须在 router.with_state(shared) 之前拿引用，否则 shared 已被移走。
     {
         let state = shared.app.state::<crate::store::AppState>();
-        let apps_to_restore: Vec<&'static str> = {
-            let db = &state.db;
-            const STARTUP_APPS: [&str; 4] = ["claude", "codex", "gemini", "grokbuild"];
-            let mut out = Vec::new();
-            for app_type in STARTUP_APPS {
-                if db
-                    .get_proxy_config_for_app(app_type)
-                    .await
-                    .is_ok_and(|cfg| cfg.enabled)
-                {
-                    out.push(app_type);
-                }
-            }
-            out
-        };
-        if apps_to_restore.is_empty() {
-            log::debug!("[sidecar] 启动时无需恢复代理状态");
-        } else {
-            log::info!("[sidecar] 恢复代理状态，应用列表: {apps_to_restore:?}");
-            for app_type in apps_to_restore {
-                match state
-                    .proxy_service
-                    .set_takeover_for_app(app_type, true)
-                    .await
-                {
-                    Ok(()) => log::info!("[sidecar] ✓ 已恢复 {app_type} 代理接管"),
-                    Err(e) => {
-                        log::error!("[sidecar] ✗ 恢复 {app_type} 代理失败: {e}");
-                        let _ = state
-                            .proxy_service
-                            .set_takeover_for_app(app_type, false)
-                            .await;
-                    }
-                }
-            }
-        }
+        finish_startup(&state).await;
     }
-
     let router = router.with_state(shared);
 
     // 宿主握手：必须是 stdout 首行，且只打这一行结构化数据。
@@ -597,6 +669,19 @@ async fn serve(port: u16, webroot: Option<PathBuf>) -> Result<(), String> {
     axum::serve(listener, router)
         .await
         .map_err(|e| format!("HTTP 服务退出: {e}"))
+}
+
+// 与桌面 setup 同序：清理旧共享凭据、从直连 live 提取通用配置，再恢复代理。
+// 官方模型检查必须在模式恢复后启动；它同时注册刷新后的客户端目录同步回调。
+async fn finish_startup(state: &AppState) {
+    if let Err(error) =
+        crate::services::provider::ProviderService::scrub_leaked_gemini_common_config(state).await
+    {
+        log::warn!("清理 Gemini 通用配置泄漏凭据失败: {error}");
+    }
+    crate::initialize_common_config_snippets(state);
+    crate::mode::controller::startup(state).await;
+    crate::services::provider::codex_official_models::start_background_checks(state.clone());
 }
 
 /// 复刻桌面 `run()` 里的状态注册（5 种 State）与数据库/代理初始化。
@@ -623,6 +708,19 @@ fn init_states(app: &AppHandle<Wry>) -> Result<(), String> {
 
     let app_state = AppState::new(db);
     app_state.proxy_service.set_app_handle(app.clone());
+
+    // 新增通用配置提取会读取 live 文件，因此要先补完上次中断的写入。
+    crate::mode::operation::recover_on_startup(&app_state.db);
+    match app_state.db.init_default_skill_repos() {
+        Ok(count) if count > 0 => log::info!("Initialized {count} default skill repositories"),
+        Ok(_) => {}
+        Err(error) => log::warn!("Failed to initialize default skill repositories: {error}"),
+    }
+    match app_state.db.init_default_official_providers() {
+        Ok(count) if count > 0 => log::info!("Seeded {count} official providers"),
+        Ok(_) => {}
+        Err(error) => log::warn!("Failed to initialize official providers: {error}"),
+    }
 
     if let Err(e) = crate::proxy::http_client::init(
         app_state
@@ -651,4 +749,197 @@ fn init_states(app: &AppHandle<Wry>) -> Result<(), String> {
     )))));
 
     Ok(())
+}
+
+#[cfg(test)]
+mod session_transport_tests {
+    use super::*;
+    use tauri::{NoopEventSink, NoopHostBridge};
+
+    fn isolated_shared() -> Arc<Shared> {
+        let (events, _) = broadcast::channel(1);
+        Arc::new(Shared {
+            app: AppHandle::new(Arc::new(NoopEventSink), Arc::new(NoopHostBridge)),
+            handlers: Handlers::from_pairs(vec![]),
+            events,
+            token: "fixture-only".into(),
+            port: 0,
+            webroot: None,
+        })
+    }
+
+    #[tokio::test]
+    async fn rejects_session_stream_without_token_before_opening_a_path() {
+        let response = session_messages_stream(
+            AxumState(isolated_shared()),
+            HeaderMap::new(),
+            Json(SessionRequest {
+                provider_id: "codex".into(),
+                source_path: "/never-read/fixture.jsonl".into(),
+            }),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    #[tokio::test]
+    async fn rejects_session_image_without_token_before_opening_a_path() {
+        let response = session_image_binary(
+            AxumState(isolated_shared()),
+            HeaderMap::new(),
+            Json(SessionImageRequest {
+                provider_id: "codex".into(),
+                source_path: "/never-read/fixture.jsonl".into(),
+                image: ImageRef {
+                    source: crate::session_manager::model::ImageSource::LocalFile {
+                        path: "/never-read/fixture.png".into(),
+                    },
+                    media_type: "image/png".into(),
+                    size: 0,
+                    alt: None,
+                },
+            }),
+        )
+        .await;
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+}
+
+#[cfg(test)]
+mod startup_tests {
+    use super::*;
+    use std::process::Command;
+    use tauri::{NoopEventSink, NoopHostBridge};
+
+    // HOME, settings, HTTP clients and the official-model OnceLock are all
+    // process-global. Run each real bootstrap in its own test process so a
+    // fixture can never become another test's persisted/global state.
+    fn run_isolated(name: &str) -> bool {
+        if std::env::var("CCS_STARTUP_TEST_CHILD").as_deref() == Ok(name) {
+            return false;
+        }
+        let home = tempfile::TempDir::new().expect("isolated test home");
+        let output = Command::new(std::env::current_exe().expect("test executable"))
+            .args(["--exact", name, "--nocapture"])
+            .env("CCS_STARTUP_TEST_CHILD", name)
+            .env("CC_SWITCH_TEST_HOME", home.path())
+            .env("HOME", home.path())
+            .env("USERPROFILE", home.path())
+            .output()
+            .expect("run isolated startup test");
+        assert!(
+            output.status.success(),
+            "isolated startup test failed:\n{}\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr),
+        );
+        true
+    }
+
+    fn app() -> AppHandle<Wry> {
+        AppHandle::new(Arc::new(NoopEventSink), Arc::new(NoopHostBridge))
+    }
+
+    fn memory_state() -> AppState {
+        AppState::new(Arc::new(
+            crate::database::Database::memory().expect("memory database"),
+        ))
+    }
+
+    fn seed_codex_live() {
+        let dir = crate::config::get_home_dir().join(".codex");
+        std::fs::create_dir_all(&dir).expect("Codex fixture directory");
+        std::fs::write(
+            dir.join("config.toml"),
+            "approval_policy = \"on-request\"\nsandbox_mode = \"workspace-write\"\n",
+        )
+        .expect("Codex fixture config");
+        std::fs::write(dir.join("auth.json"), "{}").expect("empty fixture auth");
+    }
+
+    #[test]
+    fn seeds_default_data_once() {
+        if run_isolated("sidecar::startup_tests::seeds_default_data_once") {
+            return;
+        }
+        let first = app();
+        init_states(&first).expect("initialize states");
+        let state = first.state::<AppState>();
+        let repos = state.db.get_skill_repos().expect("skill repos");
+        assert!(
+            !repos.is_empty(),
+            "startup must initialize default Skills repositories"
+        );
+        assert!(
+            state
+                .db
+                .get_provider_by_id(crate::database::CODEX_OFFICIAL_PROVIDER_ID, "codex")
+                .expect("official provider lookup")
+                .is_some(),
+            "startup must seed the official Codex provider",
+        );
+        let providers = state
+            .db
+            .get_all_providers("codex")
+            .expect("providers")
+            .len();
+        let second = app();
+        init_states(&second).expect("initialize again");
+        let repeated = second.state::<AppState>();
+        assert_eq!(repeated.db.get_skill_repos().unwrap().len(), repos.len());
+        assert_eq!(
+            repeated.db.get_all_providers("codex").unwrap().len(),
+            providers
+        );
+    }
+
+    #[tokio::test]
+    async fn extracts_common_config_and_migrates() {
+        if run_isolated("sidecar::startup_tests::extracts_common_config_and_migrates") {
+            return;
+        }
+        seed_codex_live();
+        let state = memory_state();
+        finish_startup(&state).await;
+        let snippet = state
+            .db
+            .get_config_snippet("codex")
+            .expect("common snippet");
+        assert!(
+            snippet
+                .as_deref()
+                .is_some_and(|s| s.contains("approval_policy")),
+            "sidecar must extract common configuration from clean live files",
+        );
+        assert!(state.db.is_legacy_common_config_migrated().unwrap());
+    }
+
+    #[tokio::test]
+    async fn respects_cleared_common_config() {
+        if run_isolated("sidecar::startup_tests::respects_cleared_common_config") {
+            return;
+        }
+        seed_codex_live();
+        let state = memory_state();
+        state
+            .db
+            .set_config_snippet_cleared("codex", true)
+            .expect("mark explicitly cleared");
+        finish_startup(&state).await;
+        assert!(state.db.get_config_snippet("codex").unwrap().is_none());
+        assert!(state.db.is_legacy_common_config_migrated().unwrap());
+    }
+
+    #[tokio::test]
+    async fn registers_official_model_refresh() {
+        if run_isolated("sidecar::startup_tests::registers_official_model_refresh") {
+            return;
+        }
+        let state = memory_state();
+        finish_startup(&state).await;
+        assert!(
+            crate::services::provider::codex_official_models::testing::registered_with(&state.db),
+            "official model refresh must be registered with the sidecar state",
+        );
+    }
 }

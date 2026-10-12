@@ -26,7 +26,7 @@ fn deeplink_parser_accepts_android_codex_provider_link_shape() {
 
 #[test]
 fn deeplink_import_claude_provider_persists_to_db() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let _home = ensure_test_home();
 
@@ -62,7 +62,7 @@ fn deeplink_import_claude_provider_persists_to_db() {
 
 #[test]
 fn deeplink_import_codex_provider_builds_auth_and_config() {
-    let _guard = test_mutex().lock().expect("acquire test mutex");
+    let _guard = test_mutex().lock().unwrap_or_else(|e| e.into_inner());
     reset_test_fs();
     let _home = ensure_test_home();
 

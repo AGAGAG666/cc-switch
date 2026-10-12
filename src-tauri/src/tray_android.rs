@@ -20,3 +20,14 @@ pub fn refresh_tray_menu(_app: &tauri::AppHandle) {}
 
 /// 桌面：50ms 合窗后异步刷新托盘用量标题。Android：无托盘，直接返回。
 pub fn schedule_tray_refresh(_app: &tauri::AppHandle) {}
+
+/// Android has no desktop tray navigation or tray-status badge.
+#[tauri::command]
+pub fn take_tray_navigation() -> Option<serde_json::Value> {
+    None
+}
+
+#[tauri::command]
+pub fn tray_app_page_seen(_app: tauri::AppHandle, _app_type: String) {}
+
+pub fn schedule_tray_status_check(_app: &tauri::AppHandle) {}

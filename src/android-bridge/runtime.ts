@@ -209,6 +209,90 @@ interface RpcEnvelope {
  */
 const HOST_ONLY_COMMANDS = new Set(["pick_directory"]);
 
+/** Android counterpart of Tauri's typed IPC channel. The transport is a
+ * token-authenticated POST stream, not a public GET URL containing session paths. */
+export class Channel<T> {
+  onmessage?: (value: T) => void;
+}
+
+async function streamSessionMessages(
+  base: string,
+  token: string,
+  args: Record<string, unknown> | undefined,
+): Promise<void> {
+  const channel = args?.onChunk;
+  if (!(channel instanceof Channel) || !channel.onmessage) {
+    throw new Error("stream_session_messages requires a Channel callback");
+  }
+  const response = await fetch(`${base}/rpc-stream/session-messages`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-CCS-Token": token },
+    body: JSON.stringify({
+      providerId: args?.providerId,
+      sourcePath: args?.sourcePath,
+    }),
+  });
+  if (!response.ok || !response.body) {
+    throw new Error(`session stream unavailable (${response.status})`);
+  }
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let pending = "";
+  let seenDone = false;
+  const deliver = (frame: string) => {
+    for (const line of frame.split("\n")) {
+      if (!line.startsWith("data:")) continue;
+      const chunk = JSON.parse(line.slice(5).trim()) as {
+        type?: string;
+        message?: string;
+      };
+      channel.onmessage?.(chunk);
+      if (chunk.type === "error")
+        throw new Error(chunk.message ?? "session stream failed");
+      if (chunk.type === "done") seenDone = true;
+    }
+  };
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      pending += decoder
+        .decode(value, { stream: !done })
+        .replace(/\r\n/g, "\n");
+      if (pending.length > 4 * 1024 * 1024) {
+        throw new Error("session stream frame exceeds 4 MiB");
+      }
+      let boundary: number;
+      while ((boundary = pending.indexOf("\n\n")) !== -1) {
+        deliver(pending.slice(0, boundary));
+        pending = pending.slice(boundary + 2);
+      }
+      if (done) {
+        if (pending.trim()) deliver(pending);
+        if (!seenDone) throw new Error("session stream closed before Done");
+        break;
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
+async function readSessionImage(
+  base: string,
+  token: string,
+  args: Record<string, unknown> | undefined,
+): Promise<ArrayBuffer> {
+  const response = await fetch(`${base}/rpc-binary/session-image`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "X-CCS-Token": token },
+    body: JSON.stringify(args ?? {}),
+  });
+  if (!response.ok) {
+    throw new Error(`session image unavailable (${response.status})`);
+  }
+  return response.arrayBuffer();
+}
+
 /**
  * 与 `@tauri-apps/api/core` 的 `invoke` 同签名。
  *
@@ -224,6 +308,13 @@ export async function invoke<T>(
   }
 
   const h = await waitForHandshake();
+  const base = resolveSidecarBaseUrl(h);
+  if (cmd === "stream_session_messages") {
+    return (await streamSessionMessages(base, h.token, args)) as T;
+  }
+  if (cmd === "get_session_image") {
+    return (await readSessionImage(base, h.token, args)) as T;
+  }
 
   let res: Response;
   try {
@@ -254,6 +345,24 @@ export async function invoke<T>(
 
   const envelope = (await res.json()) as RpcEnvelope;
   if (!envelope.ok) {
+    if (cmd === "set_proxy_stack_member" && envelope.error) {
+      try {
+        const structured = JSON.parse(envelope.error) as {
+          partial?: unknown;
+          message?: unknown;
+        };
+        if (
+          typeof structured.partial === "boolean" &&
+          typeof structured.message === "string"
+        ) {
+          throw structured;
+        }
+      } catch (error) {
+        if (typeof error === "object" && error !== null && "partial" in error) {
+          throw error;
+        }
+      }
+    }
     throw envelope.error ?? `命令 ${cmd} 执行失败`;
   }
   return envelope.data as T;

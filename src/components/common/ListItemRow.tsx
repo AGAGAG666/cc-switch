@@ -15,8 +15,8 @@ export const ListItemRow: React.FC<ListItemRowProps> = ({
   return (
     <div
       className={cn(
-        "group flex items-center gap-3 px-4 py-2.5 hover:bg-muted/50 transition-colors",
-        !isLast && "border-b border-border-default",
+        "group flex items-center gap-3 px-4 py-2.5 hover:bg-subtle transition-colors",
+        !isLast && "border-b border-border",
         className,
       )}
     >

@@ -47,7 +47,7 @@ pub use window::{Theme, Window};
 
 /// 复刻 `tauri::async_runtime`。
 pub mod async_runtime {
-    pub use crate::runtime::{block_on, spawn, spawn_blocking, JoinHandle};
+    pub use crate::runtime::{block_on, handle, spawn, spawn_blocking, JoinHandle};
 }
 
 /// 复刻 `tauri::process`。

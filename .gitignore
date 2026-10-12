@@ -29,3 +29,7 @@ copilot-api
 .history
 CODEBUDDY.md
 mainWindow.js
+
+# Android build outputs (local only)
+dist-android/
+src-tauri/android/target/

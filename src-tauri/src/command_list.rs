@@ -1,7 +1,7 @@
 //! 命令表的**唯一真源**。
 //!
 //! 桌面 (`tauri::Builder::invoke_handler`) 与 Android sidecar (`rpc::Handlers`)
-//! 必须注册完全相同的 303 条命令，否则前端在两端行为不一致。
+//! 必须注册完全相同的 335 条命令，否则前端在两端行为不一致。
 //! 这里用一个 `macro_rules!` 把列表抽出来，两边各展开一次。
 //!
 //! 注意：
@@ -24,6 +24,7 @@ macro_rules! cc_switch_generate_handler {
             crate::commands::get_current_provider,
             crate::commands::add_provider,
             crate::commands::update_provider,
+            crate::commands::get_provider_editor_view,
             crate::commands::delete_provider,
             crate::commands::remove_provider_from_live_config,
             crate::commands::switch_provider,
@@ -46,16 +47,20 @@ macro_rules! cc_switch_generate_handler {
             crate::commands::get_skills_migration_result,
             crate::commands::get_app_config_path,
             crate::commands::open_app_config_folder,
+            crate::commands::reveal_app_log_file,
             crate::commands::get_claude_common_config_snippet,
             crate::commands::set_claude_common_config_snippet,
             crate::commands::get_common_config_snippet,
             crate::commands::set_common_config_snippet,
-            crate::commands::update_toml_common_config_snippet,
             crate::commands::extract_common_config_snippet,
             crate::commands::read_live_provider_settings,
             crate::commands::get_settings,
             crate::commands::save_settings,
             crate::commands::has_codex_unify_history_backup,
+            crate::commands::codex_forces_multi_agent_v2,
+            crate::commands::get_codex_session_compression,
+            crate::commands::set_codex_session_compression,
+            crate::commands::get_codex_sessions_disk_usage,
             crate::commands::restore_codex_unified_history,
             crate::commands::get_rectifier_config,
             crate::commands::set_rectifier_config,
@@ -105,6 +110,7 @@ macro_rules! cc_switch_generate_handler {
             crate::commands::delete_mcp_server,
             crate::commands::toggle_mcp_app,
             crate::commands::import_mcp_from_apps,
+            crate::commands::resync_mcp_to_apps,
             // Prompt management
             crate::commands::get_prompts,
             crate::commands::upsert_prompt,
@@ -112,6 +118,7 @@ macro_rules! cc_switch_generate_handler {
             crate::commands::enable_prompt,
             crate::commands::import_prompt_from_file,
             crate::commands::get_current_prompt_file_content,
+            crate::commands::get_prompt_file_location,
             crate::commands::get_pi_prompt_file,
             crate::commands::replace_pi_prompt_file,
             crate::commands::delete_pi_prompt_file,
@@ -129,7 +136,8 @@ macro_rules! cc_switch_generate_handler {
             crate::commands::delete_profile,
             crate::commands::clear_current_profile,
             crate::commands::apply_profile,
-            // model list fetch (OpenAI-compatible /v1/models)
+            // Fetch OpenAI-compatible and Anthropic model lists. Response data structure:
+            // data[].id, data[]?.owned_by. Special: supports Zhipu OpenAI Responses models[].slug.
             crate::commands::fetch_models_for_config,
             crate::commands::get_opencode_models,
             // ours: endpoint speed test + custom endpoint management
@@ -161,6 +169,9 @@ macro_rules! cc_switch_generate_handler {
             crate::commands::open_zip_file_dialog,
             crate::commands::create_db_backup,
             crate::commands::list_db_backups,
+            crate::commands::list_backup_locations,
+            crate::commands::delete_backup_location,
+            crate::commands::reveal_backup_location,
             crate::commands::restore_db_backup,
             crate::commands::rename_db_backup,
             crate::commands::delete_db_backup,
@@ -187,8 +198,11 @@ macro_rules! cc_switch_generate_handler {
             crate::commands::import_skills_from_apps,
             crate::commands::discover_available_skills,
             crate::commands::check_skill_updates,
+            crate::commands::resync_skills_to_apps,
             crate::commands::update_skill,
             crate::commands::migrate_skill_storage,
+            crate::commands::get_cc_switch_skills_dir,
+            crate::commands::open_cc_switch_skills_dir,
             crate::commands::search_skills_sh,
             // Skill management (legacy API compatibility)
             crate::commands::get_skills,
@@ -210,21 +224,33 @@ macro_rules! cc_switch_generate_handler {
             crate::commands::stop_proxy_with_restore,
             crate::commands::get_proxy_takeover_status,
             crate::commands::set_proxy_takeover_for_app,
+            crate::commands::get_app_mode,
+            crate::commands::set_proxy_route,
+            crate::commands::take_startup_attach_failures,
+            crate::tray::take_tray_navigation,
+            crate::tray::tray_app_page_seen,
+            crate::commands::exit_proxy_apps_in_mode,
+            crate::commands::get_direct_provider,
             crate::commands::get_proxy_status,
             crate::commands::get_proxy_config,
             crate::commands::update_proxy_config,
             // Global & Per-App Config
             crate::commands::get_global_proxy_config,
             crate::commands::update_global_proxy_config,
+            crate::commands::get_proxy_client_host,
+            crate::commands::set_proxy_client_host,
             crate::commands::get_proxy_config_for_app,
             crate::commands::update_proxy_config_for_app,
-            crate::commands::get_default_cost_multiplier,
-            crate::commands::set_default_cost_multiplier,
             crate::commands::get_pricing_model_source,
             crate::commands::set_pricing_model_source,
             crate::commands::is_proxy_running,
             crate::commands::is_live_takeover_active,
             crate::commands::switch_proxy_provider,
+            crate::commands::get_proxy_stack,
+            crate::commands::set_proxy_stack_member,
+            crate::commands::adopt_codex_stack_catalog,
+            crate::commands::restart_codex_app_server_daemon,
+            crate::commands::acknowledge_codex_stale_clients,
             // Proxy failover commands
             crate::commands::get_provider_health,
             crate::commands::reset_circuit_breaker,
@@ -240,8 +266,10 @@ macro_rules! cc_switch_generate_handler {
             crate::commands::set_auto_failover_enabled,
             // Usage statistics
             crate::commands::get_usage_summary,
+            crate::commands::get_session_usage_summary,
             crate::commands::get_usage_summary_by_app,
             crate::commands::get_usage_trends,
+            crate::commands::get_usage_first_date,
             crate::commands::get_provider_stats,
             crate::commands::get_model_stats,
             crate::commands::get_request_logs,
@@ -257,21 +285,25 @@ macro_rules! cc_switch_generate_handler {
             // Session usage sync
             crate::commands::sync_session_usage,
             crate::commands::rebuild_codex_usage,
+            crate::commands::get_session_usage_last_sync,
             crate::commands::get_usage_data_sources,
             // Stream health check
             crate::commands::stream_check_provider,
-            crate::commands::stream_check_all_providers,
-            crate::commands::get_stream_check_config,
-            crate::commands::save_stream_check_config,
             // Session manager
             crate::commands::list_sessions,
             crate::commands::get_session_messages,
+            crate::commands::stream_session_messages,
+            crate::commands::get_session_block_content,
+            crate::commands::get_session_image,
+            crate::commands::reveal_session_path,
+            crate::commands::export_session_markdown,
             crate::commands::delete_session,
             crate::commands::delete_sessions,
             crate::commands::launch_session_terminal,
             crate::commands::get_tool_versions,
             crate::commands::run_tool_lifecycle_action,
             crate::commands::probe_tool_installations,
+            crate::commands::list_tool_installations,
             // Provider terminal
             crate::commands::open_provider_terminal,
             // Universal Provider management
@@ -320,6 +352,7 @@ macro_rules! cc_switch_generate_handler {
             // Generic managed auth commands
             crate::commands::auth_start_login,
             crate::commands::auth_poll_for_account,
+            crate::commands::auth_cancel_login,
             crate::commands::auth_list_accounts,
             crate::commands::auth_get_status,
             crate::commands::auth_remove_account,

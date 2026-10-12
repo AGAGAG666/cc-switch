@@ -1,5 +1,5 @@
 /** `@tauri-apps/api/core` 的 Android 替身。 */
-export { invoke } from "./runtime";
+export { invoke, Channel } from "./runtime";
 
 /**
  * 上游用 `isTauri()` 决定是否订阅原生窗口事件。Android WebView 虽然没有桌面
