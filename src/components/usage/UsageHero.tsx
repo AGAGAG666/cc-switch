@@ -94,8 +94,8 @@ function MetricCard({
   title?: string;
 }) {
   return (
-    <div className="flex h-[76px] min-w-0 flex-col justify-between rounded-panel border border-border bg-surface px-3.5 py-3">
-      <div className="flex min-w-0 items-center gap-0.5">
+    <div className="ccs-usage-metric flex h-[76px] min-w-0 flex-col justify-between rounded-panel border border-border bg-surface px-3.5 py-3">
+      <div className="ccs-usage-metric-label flex min-w-0 items-center gap-0.5">
         <span className="truncate text-caption text-fg-2">{label}</span>
         {help && (
           <HelpTip title={help.title} align="end">
@@ -104,7 +104,7 @@ function MetricCard({
         )}
       </div>
       <span
-        className="truncate text-metric tabular-nums text-fg-1"
+        className="ccs-usage-metric-value truncate text-metric tabular-nums text-fg-1"
         title={title}
       >
         {value}
@@ -127,14 +127,14 @@ function MiniMetric({
   help?: { title: string; body: string };
 }) {
   return (
-    <div className="flex min-w-0 flex-col rounded-panel bg-subtle px-3.5 py-2">
-      <div className="flex min-w-0 items-center gap-0.5">
+    <div className="ccs-usage-metric ccs-usage-mini-metric flex min-w-0 flex-col rounded-panel bg-subtle px-3.5 py-2">
+      <div className="ccs-usage-metric-label flex min-w-0 items-center gap-0.5">
         <span className="truncate text-caption text-fg-2">{label}</span>
         {help && <HelpTip title={help.title}>{help.body}</HelpTip>}
       </div>
       <span
         className={cn(
-          "truncate text-section tabular-nums",
+          "ccs-usage-metric-value truncate text-section tabular-nums",
           muted ? "text-fg-3" : "text-fg-1",
         )}
         title={title}
@@ -202,13 +202,13 @@ export function UsageHero({
   return (
     <section
       aria-label={t("usage.metrics.label")}
-      className="flex shrink-0 flex-col gap-2.5"
+      className="ccs-usage-hero flex shrink-0 flex-col gap-2.5"
     >
-      <div className="flex items-start gap-2.5">
-        <div className="flex min-w-0 flex-1 flex-col gap-2.5">
+      <div className="ccs-usage-hero-row flex items-start gap-2.5">
+        <div className="ccs-usage-metrics flex min-w-0 flex-1 flex-col gap-2.5">
           <div
             className={cn(
-              "grid gap-2.5",
+              "ccs-usage-metric-grid grid gap-2.5",
               compact ? "grid-cols-2" : "grid-cols-4",
             )}
           >
@@ -244,7 +244,7 @@ export function UsageHero({
           {moreOpen && (
             <div
               className={cn(
-                "grid gap-2.5",
+                "ccs-usage-metric-grid grid gap-2.5",
                 compact ? "grid-cols-2" : "grid-cols-4",
               )}
             >
@@ -289,7 +289,7 @@ export function UsageHero({
           size="regular"
           aria-expanded={moreOpen}
           onClick={() => setMoreOpen((open) => !open)}
-          className="shrink-0 gap-1 pe-2 ps-2.5 text-fg-2"
+          className="ccs-usage-more shrink-0 gap-1 pe-2 ps-2.5 text-fg-2"
         >
           {t("usage.metrics.more")}
           <ChevronDown

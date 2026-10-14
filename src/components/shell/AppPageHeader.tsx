@@ -43,7 +43,7 @@ export function AppPageHeader({
   return (
     <header
       className={cn(
-        "flex h-[52px] shrink-0 items-center gap-5 border-b border-border pe-4 ps-6",
+        "ccs-page-header flex h-[52px] shrink-0 items-center gap-5 border-b border-border pe-4 ps-6",
         className,
       )}
       {...DRAG_REGION_ATTR}
@@ -53,7 +53,7 @@ export function AppPageHeader({
       <div
         {...DRAG_REGION_ATTR}
         className={cn(
-          "flex min-w-0 items-center gap-2.5",
+          "ccs-page-header-title flex min-w-0 items-center gap-2.5",
           truncateTitle ? "flex-1" : "shrink-0",
         )}
       >
@@ -91,10 +91,12 @@ export function AppPageHeader({
           </div>
         )}
       </div>
-      {!truncateTitle && <div {...DRAG_REGION_ATTR} className="flex-1" />}
+      {!truncateTitle && (
+        <div {...DRAG_REGION_ATTR} className="ccs-page-header-spacer flex-1" />
+      )}
       {actions && (
         <div
-          className="flex min-w-0 shrink items-center justify-end gap-2"
+          className="ccs-page-header-actions flex min-w-0 shrink items-center justify-end gap-2"
           style={NO_DRAG}
         >
           {actions}

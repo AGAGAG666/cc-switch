@@ -163,6 +163,7 @@ export function AppsPage() {
   return (
     <>
       <AppPageHeader
+        className="ccs-apps-header"
         icon={<LayoutGrid className="h-5 w-5" strokeWidth={1.5} />}
         title={t("nav.apps")}
         titleExtra={
@@ -250,16 +251,19 @@ export function AppsPage() {
 
       <div
         id="main-content"
-        className="min-h-0 flex-1 overflow-y-auto scroll-stable"
+        data-ccs-page="apps"
+        className="ccs-apps-page min-h-0 flex-1 overflow-y-auto scroll-stable"
       >
-        <div className="px-6 pb-10 pt-4">
-          <div className="flex h-8 items-center px-4 text-caption font-medium text-fg-2">
-            <span className="flex-1">{t("appsPage.columnApp")}</span>
-            <span className="w-[168px] text-end">
+        <div className="ccs-apps-content px-6 pb-10 pt-4">
+          <div className="ccs-apps-columns flex h-8 items-center px-4 text-caption font-medium text-fg-2">
+            <span className="ccs-apps-column-app flex-1">
+              {t("appsPage.columnApp")}
+            </span>
+            <span className="ccs-apps-column-version w-[168px] text-end">
               {t("appsPage.columnVersion")}
             </span>
-            <span className="w-[104px]" />
-            <span className="flex w-[56px] items-center justify-end gap-0.5">
+            <span className="ccs-apps-column-action w-[104px]" />
+            <span className="ccs-apps-column-visibility flex w-[56px] items-center justify-end gap-0.5">
               {t("appsPage.columnVisible")}
               <HelpTip title={t("appsPage.columnVisible")} align="end">
                 {t("appsPage.visibleHelp")}
@@ -267,7 +271,7 @@ export function AppsPage() {
             </span>
           </div>
 
-          <div className="divide-y divide-border overflow-hidden rounded-panel border border-border bg-surface">
+          <div className="ccs-apps-list divide-y divide-border overflow-hidden rounded-panel border border-border bg-surface">
             {ROWS.map((row) =>
               row.kind === "desktop" ? (
                 <AppRow
@@ -374,24 +378,34 @@ function AppRow({
   footer?: React.ReactNode;
 }) {
   return (
-    <div data-tool-row className="px-4 py-3">
-      <div className="flex items-center gap-4">
+    <div
+      data-tool-row
+      data-ccs-app-row={app}
+      className="ccs-apps-row px-4 py-3"
+    >
+      <div className="ccs-apps-row-main flex items-center gap-4">
         <AppGlyph app={app} size={20} badgeClassName="bg-surface" />
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-1.5 text-strong text-fg-1">
+        <div className="ccs-apps-info min-w-0 flex-1">
+          <div className="ccs-apps-name flex min-w-0 items-center gap-1.5 text-strong text-fg-1">
             {name}
           </div>
           {meta && (
-            <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-caption text-fg-2">
+            <div className="ccs-apps-meta mt-0.5 flex min-w-0 items-center gap-1.5 text-caption text-fg-2">
               {meta}
             </div>
           )}
         </div>
-        <div className="w-[168px] shrink-0 text-end">{version}</div>
-        <div className="flex w-[104px] shrink-0 justify-end">{action}</div>
-        <div className="flex w-[56px] shrink-0 justify-end">{visibility}</div>
+        <div className="ccs-apps-version w-[168px] shrink-0 text-end">
+          {version}
+        </div>
+        <div className="ccs-apps-action flex w-[104px] shrink-0 justify-end">
+          {action}
+        </div>
+        <div className="ccs-apps-visibility flex w-[56px] shrink-0 justify-end">
+          {visibility}
+        </div>
       </div>
-      {footer && <div className="ms-9 mt-2">{footer}</div>}
+      {footer && <div className="ccs-apps-footer ms-9 mt-2">{footer}</div>}
     </div>
   );
 }

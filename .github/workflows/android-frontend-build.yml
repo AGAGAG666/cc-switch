@@ -63,6 +63,15 @@ jobs:
       - name: Android bridge regression tests
         run: pnpm exec vitest run src/android-bridge/runtime.test.ts src/android-bridge/deeplink.test.ts
 
+      - name: Android mobile layout regression tests
+        run: >-
+          pnpm exec vitest run
+          tests/components/AndroidSidebarDrawer.test.tsx
+          tests/components/AndroidV4MobileLayout.test.tsx
+          tests/components/AndroidV4PageHooks.test.ts
+          tests/components/ProviderCardLayout.test.ts
+          --maxWorkers=1 --no-file-parallelism
+
       - name: Build renderer (android)
         run: pnpm build:android
 

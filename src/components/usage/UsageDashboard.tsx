@@ -473,12 +473,12 @@ export function UsageDashboard({
     );
 
   const filterRow = (
-    <div className="flex min-h-12 shrink-0 flex-wrap items-center gap-1.5 px-6 py-2">
+    <div className="ccs-usage-filters flex min-h-12 shrink-0 flex-wrap items-center gap-1.5 px-6 py-2">
       <div
         ref={appFilterIndicator.ref}
         role="group"
         aria-label={t("usage.appFilter.label")}
-        className="relative flex h-8 shrink-0 items-center gap-0.5 rounded-[8px] bg-subtle p-[3px]"
+        className="ccs-usage-app-filter relative flex h-8 shrink-0 items-center gap-0.5 rounded-[8px] bg-subtle p-[3px]"
       >
         <SegmentThumb
           rect={appFilterIndicator.rect}
@@ -515,14 +515,14 @@ export function UsageDashboard({
           </HoverTip>
         ))}
       </div>
-      <div className="min-w-2 flex-1" />
+      <div className="ccs-usage-filter-spacer min-w-2 flex-1" />
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <Button
             type="button"
             variant="neutral"
             size="regular"
-            className="min-w-[78px] max-w-[156px] shrink gap-1 pe-2 ps-3"
+            className="ccs-usage-filter-trigger min-w-[78px] max-w-[156px] shrink gap-1 pe-2 ps-3"
             title={
               providerName
                 ? usageProviderTitle(getUsageProviderLabel(providerName, t))
@@ -573,7 +573,7 @@ export function UsageDashboard({
             type="button"
             variant="neutral"
             size="regular"
-            className="min-w-[66px] max-w-[156px] shrink gap-1 pe-2 ps-3"
+            className="ccs-usage-filter-trigger min-w-[66px] max-w-[156px] shrink gap-1 pe-2 ps-3"
             title={model ?? t("usage.modelFilter.title")}
           >
             <span className="min-w-0 truncate">
@@ -678,8 +678,12 @@ export function UsageDashboard({
   const scopedAppType = appType === "all" ? undefined : appType;
 
   const tabsSection = (
-    <section aria-label={t("usage.tabs.label")} className="flex flex-col">
+    <section
+      aria-label={t("usage.tabs.label")}
+      className="ccs-usage-tabs flex flex-col"
+    >
       <PageTabs<UsageTab>
+        className="ccs-usage-tabbar"
         aria-label={t("usage.tabs.label")}
         items={TABS.map((id) => ({ value: id, label: tabLabel[id] }))}
         value={tab}
@@ -691,6 +695,7 @@ export function UsageDashboard({
 
       <div
         role="tabpanel"
+        className="ccs-usage-tabpanel"
         id="usage-tabpanel"
         aria-labelledby={`usage-tab-${tab}`}
       >
@@ -733,12 +738,12 @@ export function UsageDashboard({
       // 空库里只有定价可配：不画全是 0 的概览和趋势，直接给页签
       <div
         id="main-content"
-        className="flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto scroll-stable px-6 pb-6 pt-1"
+        className="ccs-usage-body flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto scroll-stable px-6 pb-6 pt-1"
       >
         {tabsSection}
       </div>
     ) : isEmpty ? (
-      <div className="flex min-h-0 flex-1 flex-col items-center overflow-y-auto scroll-stable px-6 pb-6">
+      <div className="ccs-usage-body flex min-h-0 flex-1 flex-col items-center overflow-y-auto scroll-stable px-6 pb-6">
         <div className="mt-16 flex max-w-[440px] flex-col items-center gap-3 text-center">
           <span
             aria-hidden="true"
@@ -778,7 +783,7 @@ export function UsageDashboard({
     ) : (
       <div
         id="main-content"
-        className="flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto scroll-stable px-6 pb-6 pt-1"
+        className="ccs-usage-body flex min-h-0 flex-1 flex-col gap-3.5 overflow-y-auto scroll-stable px-6 pb-6 pt-1"
       >
         <UsageHero
           range={range}
@@ -813,8 +818,13 @@ export function UsageDashboard({
     );
 
   return (
-    <div ref={containerRef} className="flex min-h-0 min-w-0 flex-1 flex-col">
+    <div
+      ref={containerRef}
+      data-ccs-page="usage"
+      className="ccs-usage-page flex min-h-0 min-w-0 flex-1 flex-col"
+    >
       <AppPageHeader
+        className="ccs-usage-header"
         icon={<ChartColumn className="h-5 w-5" strokeWidth={1.5} />}
         title={t("nav.usage")}
         titleExtra={

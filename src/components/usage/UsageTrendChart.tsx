@@ -248,9 +248,9 @@ export function UsageTrendChart({
   return (
     <section
       aria-labelledby="usage-trend-title"
-      className="shrink-0 rounded-panel border border-border bg-surface px-4 py-2.5"
+      className="ccs-usage-trend shrink-0 rounded-panel border border-border bg-surface px-4 py-2.5"
     >
-      <div className="flex min-h-7 flex-wrap items-center gap-x-3.5 gap-y-1">
+      <div className="ccs-usage-trend-header flex min-h-7 flex-wrap items-center gap-x-3.5 gap-y-1">
         <h2
           id="usage-trend-title"
           className="m-0 whitespace-nowrap text-caption font-semibold text-fg-2"
@@ -267,8 +267,9 @@ export function UsageTrendChart({
           />
           {metricLabel}
         </span>
-        <div className="flex-1" />
+        <div className="ccs-usage-trend-spacer flex-1" />
         <SegmentedControl<TrendMetric>
+          className="ccs-usage-trend-controls"
           size="sm"
           aria-label={t("usage.trend.metricLabel")}
           value={metric}
@@ -281,7 +282,7 @@ export function UsageTrendChart({
         />
       </div>
 
-      <div className="mt-1 h-[132px] w-full">
+      <div className="ccs-usage-trend-canvas mt-1 h-[132px] w-full">
         {isLoading ? (
           <div className="flex h-full items-center justify-center">
             <Loader2 className="h-5 w-5 animate-spin text-fg-3" />

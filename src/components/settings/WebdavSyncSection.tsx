@@ -959,7 +959,7 @@ export function WebdavSyncSection({
   // ─── Render ─────────────────────────────────────────────
 
   return (
-    <section className="space-y-4">
+    <section className="ccs-webdav-section space-y-4">
       <header className="space-y-2">
         <h3 className="text-base font-semibold text-fg-1">
           {t("settings.webdavSync.title")}
@@ -970,7 +970,7 @@ export function WebdavSyncSection({
       </header>
 
       {/* ─── Sync type selector ───────────────────────────── */}
-      <div className="flex items-center gap-4">
+      <div className="ccs-webdav-field flex items-center gap-4">
         <label className="w-40 text-xs font-medium text-fg-1 shrink-0">
           {t("settings.syncType.label")}
         </label>
@@ -993,11 +993,11 @@ export function WebdavSyncSection({
 
       {/* ─── WebDAV form ──────────────────────────────────── */}
       {syncType === "webdav" && (
-        <div className="space-y-4 rounded-lg border border-border bg-subtle p-6">
+        <div className="ccs-webdav-panel space-y-4 rounded-lg border border-border bg-subtle p-6">
           {/* Config fields */}
           <div className="space-y-3">
             {/* Service preset selector */}
-            <div className="flex items-center gap-4">
+            <div className="ccs-webdav-field flex items-center gap-4">
               <label className="w-40 text-xs font-medium text-fg-1 shrink-0">
                 {t("settings.webdavSync.presets.label")}
               </label>
@@ -1020,7 +1020,7 @@ export function WebdavSyncSection({
             </div>
 
             {/* Server URL */}
-            <div className="flex items-center gap-4">
+            <div className="ccs-webdav-field flex items-center gap-4">
               <label className="w-40 text-xs font-medium text-fg-1 shrink-0">
                 {t("settings.webdavSync.baseUrl")}
               </label>
@@ -1035,7 +1035,7 @@ export function WebdavSyncSection({
             </div>
 
             {/* Username */}
-            <div className="flex items-center gap-4">
+            <div className="ccs-webdav-field flex items-center gap-4">
               <label className="w-40 text-xs font-medium text-fg-1 shrink-0">
                 {t("settings.webdavSync.username")}
               </label>
@@ -1049,7 +1049,7 @@ export function WebdavSyncSection({
             </div>
 
             {/* Password */}
-            <div className="flex items-center gap-4">
+            <div className="ccs-webdav-field flex items-center gap-4">
               <label className="w-40 text-xs font-medium text-fg-1 shrink-0">
                 {t("settings.webdavSync.password")}
               </label>
@@ -1073,7 +1073,7 @@ export function WebdavSyncSection({
             )}
 
             {/* Remote Root */}
-            <div className="flex items-center gap-4">
+            <div className="ccs-webdav-field flex items-center gap-4">
               <label className="w-40 text-xs font-medium text-fg-1 shrink-0">
                 {t("settings.webdavSync.remoteRoot")}
                 <span className="block text-badge font-normal text-fg-2">
@@ -1090,7 +1090,7 @@ export function WebdavSyncSection({
             </div>
 
             {/* Profile */}
-            <div className="flex items-center gap-4">
+            <div className="ccs-webdav-field flex items-center gap-4">
               <label className="w-40 text-xs font-medium text-fg-1 shrink-0">
                 {t("settings.webdavSync.profile")}
                 <span className="block text-badge font-normal text-fg-2">
@@ -1106,7 +1106,7 @@ export function WebdavSyncSection({
               />
             </div>
 
-            <div className="flex items-start gap-4">
+            <div className="ccs-webdav-switch-row flex items-start gap-4">
               <label className="w-40 text-xs font-medium text-fg-1 shrink-0">
                 {t("settings.webdavSync.autoSync")}
                 <span className="block text-badge font-normal text-fg-2">
@@ -1228,10 +1228,10 @@ export function WebdavSyncSection({
 
       {/* ─── S3 form ──────────────────────────────────────── */}
       {syncType === "s3" && (
-        <div className="space-y-4 rounded-lg border border-border bg-subtle p-6">
+        <div className="ccs-webdav-panel space-y-4 rounded-lg border border-border bg-subtle p-6">
           <div className="space-y-3">
             {/* S3 preset selector */}
-            <div className="flex items-center gap-4">
+            <div className="ccs-webdav-field flex items-center gap-4">
               <label className="w-40 text-xs font-medium text-fg-1 shrink-0">
                 {t("settings.s3Sync.presets.label")}
               </label>
@@ -1262,7 +1262,7 @@ export function WebdavSyncSection({
             )}
 
             {/* Region */}
-            <div className="flex items-center gap-4">
+            <div className="ccs-webdav-field flex items-center gap-4">
               <label className="w-40 text-xs font-medium text-fg-1 shrink-0">
                 {t("settings.s3Sync.region")}
               </label>
@@ -1279,7 +1279,7 @@ export function WebdavSyncSection({
             </div>
 
             {/* Bucket */}
-            <div className="flex items-center gap-4">
+            <div className="ccs-webdav-field flex items-center gap-4">
               <label className="w-40 text-xs font-medium text-fg-1 shrink-0">
                 {t("settings.s3Sync.bucket")}
               </label>
@@ -1296,7 +1296,7 @@ export function WebdavSyncSection({
             </div>
 
             {/* Access Key ID */}
-            <div className="flex items-center gap-4">
+            <div className="ccs-webdav-field flex items-center gap-4">
               <label className="w-40 text-xs font-medium text-fg-1 shrink-0">
                 {t("settings.s3Sync.accessKeyId")}
               </label>
@@ -1313,7 +1313,7 @@ export function WebdavSyncSection({
             </div>
 
             {/* Secret Access Key */}
-            <div className="flex items-center gap-4">
+            <div className="ccs-webdav-field flex items-center gap-4">
               <label className="w-40 text-xs font-medium text-fg-1 shrink-0">
                 {t("settings.s3Sync.secretAccessKey")}
               </label>
@@ -1333,7 +1333,7 @@ export function WebdavSyncSection({
             </div>
 
             {/* Endpoint (optional) */}
-            <div className="flex items-center gap-4">
+            <div className="ccs-webdav-field flex items-center gap-4">
               <label className="w-40 text-xs font-medium text-fg-1 shrink-0">
                 {t("settings.s3Sync.endpoint")}
                 <span className="block text-badge font-normal text-fg-2">
@@ -1353,7 +1353,7 @@ export function WebdavSyncSection({
             </div>
 
             {/* Remote Root */}
-            <div className="flex items-center gap-4">
+            <div className="ccs-webdav-field flex items-center gap-4">
               <label className="w-40 text-xs font-medium text-fg-1 shrink-0">
                 {t("settings.s3Sync.remoteRoot")}
                 <span className="block text-badge font-normal text-fg-2">
@@ -1373,7 +1373,7 @@ export function WebdavSyncSection({
             </div>
 
             {/* Profile */}
-            <div className="flex items-center gap-4">
+            <div className="ccs-webdav-field flex items-center gap-4">
               <label className="w-40 text-xs font-medium text-fg-1 shrink-0">
                 {t("settings.s3Sync.profile")}
                 <span className="block text-badge font-normal text-fg-2">
@@ -1393,7 +1393,7 @@ export function WebdavSyncSection({
             </div>
 
             {/* Auto Sync toggle */}
-            <div className="flex items-start gap-4">
+            <div className="ccs-webdav-switch-row flex items-start gap-4">
               <label className="w-40 text-xs font-medium text-fg-1 shrink-0">
                 {t("settings.s3Sync.autoSync")}
                 <span className="block text-badge font-normal text-fg-2">
@@ -1414,7 +1414,7 @@ export function WebdavSyncSection({
             </div>
 
             {/* Enabled toggle */}
-            <div className="flex items-start gap-4">
+            <div className="ccs-webdav-switch-row flex items-start gap-4">
               <label className="w-40 text-xs font-medium text-fg-1 shrink-0">
                 {t("settings.s3Sync.enabled")}
                 <span className="block text-badge font-normal text-fg-2">

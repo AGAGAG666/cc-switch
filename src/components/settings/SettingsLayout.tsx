@@ -26,7 +26,7 @@ export function SettingsBlock({
   return (
     <section id={id} className={cn("space-y-3", className)}>
       {(title || actions) && (
-        <div className="flex min-h-7 items-center gap-2">
+        <div className="ccs-settings-block-heading flex min-h-7 items-center gap-2">
           {title && <h2 className="m-0 text-section text-fg-1">{title}</h2>}
           {help && <HelpTip title={help.title}>{help.body}</HelpTip>}
           {actions && (
@@ -50,7 +50,7 @@ export function SettingsCard({
   return (
     <div
       className={cn(
-        "divide-y divide-border overflow-hidden rounded-panel border border-border bg-surface",
+        "ccs-settings-card divide-y divide-border overflow-hidden rounded-panel border border-border bg-surface",
         className,
       )}
     >
@@ -80,9 +80,9 @@ export function SettingsRow({
 }) {
   const Label = htmlFor ? "label" : "div";
   return (
-    <div className={cn("px-4 py-3", className)}>
-      <div className="flex min-h-[28px] items-center gap-4">
-        <div className="min-w-0 flex-1">
+    <div className={cn("ccs-settings-row px-4 py-3", className)}>
+      <div className="ccs-settings-row-main flex min-h-[28px] items-center gap-4">
+        <div className="ccs-settings-row-label min-w-0 flex-1">
           <div className="flex items-center gap-1">
             <Label
               htmlFor={htmlFor}
@@ -99,7 +99,9 @@ export function SettingsRow({
           )}
         </div>
         {control && (
-          <div className="flex shrink-0 items-center gap-2">{control}</div>
+          <div className="ccs-settings-row-control flex shrink-0 items-center gap-2">
+            {control}
+          </div>
         )}
       </div>
       {children && <div className="mt-2.5">{children}</div>}
@@ -124,6 +126,7 @@ export function SettingsSwitchRow({
 }) {
   return (
     <SettingsRow
+      className="ccs-settings-switch-row"
       label={label}
       help={help}
       description={description}
@@ -142,7 +145,7 @@ export function SettingsSwitchRow({
 /** 设置页正文：最大宽度 760，左右 24 的内边距，分节间距 28。 */
 export function SettingsBody({ children }: { children: ReactNode }) {
   return (
-    <div className="mx-auto w-full max-w-[760px] space-y-7 px-6 pb-10 pt-6">
+    <div className="ccs-settings-body mx-auto w-full max-w-[760px] space-y-7 px-6 pb-10 pt-6">
       {children}
     </div>
   );

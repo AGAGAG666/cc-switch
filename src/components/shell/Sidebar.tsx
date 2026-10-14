@@ -1,4 +1,4 @@
-import { useRef, type ComponentType } from "react";
+import { useEffect, useRef, type ComponentType } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery } from "@tanstack/react-query";
 import { getVersion } from "@tauri-apps/api/app";
@@ -28,7 +28,12 @@ import type { GlobalPage, SettingsSection, View } from "@/lib/navigation";
 import { isAppPage } from "@/lib/navigation";
 import { SkillsIcon } from "@/components/BrandIcons";
 import { useUpdate } from "@/contexts/UpdateContext";
-import { sidebarWidth, useSidebarCollapsed } from "@/hooks/useSidebarCollapsed";
+import {
+  sidebarWidth,
+  useSidebarCollapsed,
+  usesNarrowSidebarDrawer,
+  hasActiveModalPortal,
+} from "@/hooks/useSidebarCollapsed";
 import { useSidebarStatus, type AppNavStatus } from "@/hooks/useSidebarStatus";
 import { fmtUsd } from "@/components/usage/format";
 import { HoverTip } from "@/components/ui/hover-tip";
@@ -68,29 +73,156 @@ export function Sidebar(props: SidebarProps) {
   const { collapsed, toggle } = useSidebarCollapsed(navRef);
   const { view } = props;
   const inSettings = view === "settings";
+  const closeNarrowSidebar = () => {
+    if (!collapsed && usesNarrowSidebarDrawer()) toggle();
+  };
+  const directoryProps: SidebarProps = {
+    ...props,
+    onSelectApp: (app) => {
+      props.onSelectApp(app);
+      closeNarrowSidebar();
+    },
+    onSelectPage: (page) => {
+      props.onSelectPage(page);
+      closeNarrowSidebar();
+    },
+    onSelectSettingsSection: (section) => {
+      props.onSelectSettingsSection(section);
+      closeNarrowSidebar();
+    },
+    onExitSettings: () => {
+      props.onExitSettings();
+      closeNarrowSidebar();
+    },
+  };
+  useEffect(() => {
+    if (collapsed) return;
+    const nav = navRef.current;
+    if (!nav) return;
+    const focusable = () =>
+      Array.from(
+        nav.querySelectorAll<HTMLElement>(
+          "button:not([disabled]), a[href], input:not([disabled]), [tabindex]",
+        ),
+      ).filter(
+        (element) =>
+          element.tabIndex >= 0 &&
+          !element.closest("[hidden]") &&
+          getComputedStyle(element).display !== "none",
+      );
+    let release: (() => void) | undefined;
+    const syncDrawer = () => {
+      if (!usesNarrowSidebarDrawer()) {
+        release?.();
+        release = undefined;
+        return;
+      }
+      if (release) return;
+      const main = document.getElementById("content-area");
+      const hadInert = main?.hasAttribute("inert") ?? false;
+      main?.setAttribute("inert", "");
+      nav.querySelector<HTMLElement>("[data-ccs-sidebar-toggle]")?.focus();
+      const containFocus = (event: FocusEvent) => {
+        if (hasActiveModalPortal()) return;
+        if (!nav.contains(event.target as Node)) focusable()[0]?.focus();
+      };
+      const onKeyDown = (event: KeyboardEvent) => {
+        if (event.defaultPrevented || hasActiveModalPortal()) return;
+        if (event.key === "Escape") {
+          event.preventDefault();
+          toggle();
+          return;
+        }
+        if (event.key !== "Tab") return;
+        const targets = focusable();
+        const first = targets[0];
+        const last = targets[targets.length - 1];
+        if (!first || !last) {
+          event.preventDefault();
+          return;
+        }
+        if (
+          event.shiftKey &&
+          (document.activeElement === first ||
+            !nav.contains(document.activeElement))
+        ) {
+          event.preventDefault();
+          last.focus();
+        } else if (
+          !event.shiftKey &&
+          (document.activeElement === last ||
+            !nav.contains(document.activeElement))
+        ) {
+          event.preventDefault();
+          first.focus();
+        }
+      };
+      document.addEventListener("focusin", containFocus);
+      window.addEventListener("keydown", onKeyDown);
+      const observer = new MutationObserver(() => {
+        if (!hasActiveModalPortal() && !nav.contains(document.activeElement)) {
+          nav.querySelector<HTMLElement>("[data-ccs-sidebar-toggle]")?.focus();
+        }
+      });
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ["style", "data-state", "aria-modal"],
+      });
+      release = () => {
+        observer.disconnect();
+        document.removeEventListener("focusin", containFocus);
+        window.removeEventListener("keydown", onKeyDown);
+        if (!hadInert) main?.removeAttribute("inert");
+        nav.querySelector<HTMLElement>("[data-ccs-sidebar-toggle]")?.focus();
+      };
+    };
+    syncDrawer();
+    window.addEventListener("resize", syncDrawer);
+    return () => {
+      window.removeEventListener("resize", syncDrawer);
+      release?.();
+    };
+  }, [collapsed, toggle]);
 
   return (
-    <nav
-      ref={navRef}
-      aria-label={t("nav.mainLabel")}
-      className={cn(
-        "relative flex h-full shrink-0 flex-col overflow-hidden whitespace-nowrap border-e border-border bg-sidebar text-body text-fg-1",
-      )}
+    <div
+      className="ccs-sidebar-container relative h-full shrink-0"
       style={{ width: sidebarWidth(collapsed) }}
     >
-      <a
-        href="#main-content"
-        className="absolute -start-[999px] top-2 z-10 rounded-control bg-surface px-2 py-1 text-caption shadow-v7-sm focus:start-2"
-      >
-        {t("nav.skipToContent")}
-      </a>
-      <SidebarTopBar collapsed={collapsed} onToggle={toggle} />
-      {inSettings ? (
-        <SettingsDirectory {...props} collapsed={collapsed} />
-      ) : (
-        <MainDirectory {...props} collapsed={collapsed} />
+      {!collapsed && (
+        <button
+          type="button"
+          className="ccs-sidebar-backdrop hidden"
+          aria-label={t("common.close")}
+          tabIndex={-1}
+          onClick={toggle}
+        />
       )}
-    </nav>
+      <nav
+        ref={navRef}
+        aria-label={t("nav.mainLabel")}
+        data-collapsed={collapsed}
+        className={cn(
+          "ccs-sidebar relative flex h-full shrink-0 flex-col overflow-hidden whitespace-nowrap border-e border-border bg-sidebar text-body text-fg-1",
+        )}
+        style={{ width: sidebarWidth(collapsed) }}
+      >
+        <a
+          href="#main-content"
+          className="absolute -start-[999px] top-2 z-10 rounded-control bg-surface px-2 py-1 text-caption shadow-v7-sm focus:start-2"
+        >
+          {t("nav.skipToContent")}
+        </a>
+        <SidebarTopBar collapsed={collapsed} onToggle={toggle} />
+        {inSettings ? (
+          <SettingsDirectory {...directoryProps} collapsed={collapsed} />
+        ) : (
+          <MainDirectory {...directoryProps} collapsed={collapsed} />
+        )}
+      </nav>
+    </div>
   );
 }
 
@@ -108,6 +240,7 @@ function SidebarTopBar({
   const toggleButton = (
     <HoverTip content={label} side={tipSide} disableHoverableContent>
       <button
+        data-ccs-sidebar-toggle
         type="button"
         onClick={onToggle}
         aria-label={label}

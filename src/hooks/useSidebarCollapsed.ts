@@ -33,7 +33,34 @@ let running: {
  * - 收起：盖板是侧栏底色，先挡住内容区左边那段，往左滑进侧栏底下，把内容露出来。
  * 盖板的边就是这段时间的分隔线。
  */
+export function usesNarrowSidebarDrawer(): boolean {
+  return Boolean(
+    typeof document !== "undefined" &&
+      document.querySelector('style[data-ccs="mobile-overrides"]') &&
+      window.matchMedia?.("(max-width: 640px)").matches,
+  );
+}
+
+export function hasActiveModalPortal(): boolean {
+  return Boolean(
+    typeof document !== "undefined" &&
+      (document.body.style.pointerEvents === "none" ||
+        document.querySelector(
+          '[role="dialog"][data-state="open"], [role="dialog"][aria-modal="true"], [role="alertdialog"], [role="menu"][data-state="open"], [role="listbox"][data-state="open"]',
+        )),
+  );
+}
+
+export function hasOpenNarrowSidebarDrawer(): boolean {
+  return (
+    usesNarrowSidebarDrawer() &&
+    Boolean(document.querySelector('.ccs-sidebar[data-collapsed="false"]'))
+  );
+}
+
 function animateToggle(nav: HTMLElement, fromWidth: number, toWidth: number) {
+  // Narrow Android drawers overlay a stable rail; keep desktop animation unchanged.
+  if (usesNarrowSidebarDrawer()) return;
   const main = document.getElementById("content-area");
   if (!main || typeof main.animate !== "function") return;
   if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
@@ -148,6 +175,8 @@ export function useSidebarCollapsed(navRef: RefObject<HTMLElement | null>) {
   }, [collapsed, navRef]);
 
   const toggle = useCallback(() => {
+    if (collapsed && usesNarrowSidebarDrawer() && hasActiveModalPortal())
+      return;
     const next = !collapsed;
     animateFrom.current = sidebarWidth(collapsed);
     setManual(next);

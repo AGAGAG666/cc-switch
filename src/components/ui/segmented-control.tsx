@@ -47,6 +47,7 @@ export function SegmentedControl<T extends string>({
     <div
       ref={indicator.ref}
       role="group"
+      data-ccs-segmented={size}
       aria-label={rest["aria-label"]}
       className={cn(
         "relative inline-flex items-stretch bg-subtle p-[3px]",

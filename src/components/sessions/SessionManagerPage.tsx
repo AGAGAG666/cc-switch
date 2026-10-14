@@ -1055,7 +1055,7 @@ export function SessionManagerPage({
             readerSession && "hidden",
           )}
         >
-          <div className="flex shrink-0 items-center gap-2 px-6 pt-3.5">
+          <div className="ccs-sessions-toolbar flex shrink-0 items-center gap-2 px-6 pt-3.5">
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -1144,7 +1144,7 @@ export function SessionManagerPage({
               </DropdownMenuContent>
             </DropdownMenu>
 
-            <div className="relative min-w-0 flex-1">
+            <div className="ccs-sessions-search relative min-w-0 flex-1">
               <SearchField
                 id="session-search"
                 ref={searchRef}

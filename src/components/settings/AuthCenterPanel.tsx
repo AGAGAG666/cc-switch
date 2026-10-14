@@ -52,19 +52,31 @@ export function AuthCenterPanel({
   }, [authScrollTarget]);
 
   return (
-    <div className="flex flex-col gap-3">
+    <div data-ccs-page="auth" className="ccs-auth-center flex flex-col gap-3">
       {showIntro && (
         <p className="m-0 max-w-[700px] text-caption text-fg-2">
           {t("settings.authCenter.description")}
         </p>
       )}
-      <div ref={copilotSectionRef} className="scroll-mt-4">
+      <div
+        ref={copilotSectionRef}
+        data-ccs-auth-provider="copilot"
+        className="ccs-auth-section scroll-mt-4"
+      >
         <CopilotAuthSection />
       </div>
-      <div ref={codexOauthSectionRef} className="scroll-mt-4">
+      <div
+        ref={codexOauthSectionRef}
+        data-ccs-auth-provider="codex"
+        className="ccs-auth-section scroll-mt-4"
+      >
         <CodexOAuthSection showAccountQuota />
       </div>
-      <div ref={xaiOauthSectionRef} className="scroll-mt-4">
+      <div
+        ref={xaiOauthSectionRef}
+        data-ccs-auth-provider="xai"
+        className="ccs-auth-section scroll-mt-4"
+      >
         <XaiOAuthSection mode="manage" helpSide="top" />
       </div>
     </div>

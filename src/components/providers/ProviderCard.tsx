@@ -294,14 +294,14 @@ export function ProviderCard({
   return (
     <div
       className={cn(
-        "group relative rounded-panel border transition-[border-color,box-shadow,background-color] duration-150",
+        "ccs-provider-card group relative rounded-panel border transition-[border-color,box-shadow,background-color] duration-150",
         presentation.tone
           ? TONE_CLASS[presentation.tone]
           : "border-border bg-surface hover:border-border-strong hover:shadow-v7-sm",
         dragHandleProps?.isDragging && "z-10 cursor-grabbing shadow-v7-md",
       )}
     >
-      <div className="flex min-h-[58px] items-center gap-3 py-2.5 pe-3 ps-2">
+      <div className="ccs-provider-card-row flex min-h-[58px] items-center gap-3 py-2.5 pe-3 ps-2">
         {dragHandleProps ? (
           <button
             type="button"
@@ -332,8 +332,8 @@ export function ProviderCard({
           fallbackClassName="bg-transparent text-neutral-600"
         />
 
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-1.5">
+        <div className="ccs-provider-card-identity min-w-0 flex-1">
+          <div className="ccs-provider-card-heading flex min-w-0 items-center gap-1.5">
             <h3
               className={cn(
                 "m-0 min-w-0 truncate text-strong",
@@ -438,7 +438,7 @@ export function ProviderCard({
           ) : null}
         </div>
 
-        <div className="flex shrink-0 items-center gap-3">
+        <div className="ccs-provider-card-tools flex shrink-0 items-center gap-3">
           {/* 额度列 136 宽，带重置倒计时时 194 宽（见 QuotaLines） */}
           <div className="max-w-[208px] text-end">
             <div className="flex items-center justify-end gap-1">

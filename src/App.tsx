@@ -48,6 +48,7 @@ import {
 } from "@/hooks/useTrayNavigation";
 import { useTauriEvent } from "@/hooks/useTauriEvent";
 import { useLastValidValue } from "@/hooks/useLastValidValue";
+import { hasOpenNarrowSidebarDrawer } from "@/hooks/useSidebarCollapsed";
 import {
   extractErrorMessage,
   translatePiProviderMutationError,
@@ -738,6 +739,7 @@ function App() {
       }
 
       if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (hasOpenNarrowSidebarDrawer()) return;
       if (document.body.style.overflow === "hidden") return;
       if (managementBusyRef.current) return;
       if (isTextEditableTarget(event.target)) return;
