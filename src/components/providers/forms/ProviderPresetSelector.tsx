@@ -508,7 +508,7 @@ function DimensionLabel({ children }: { children: React.ReactNode }) {
 function NeedsRouteBadge() {
   const { t } = useTranslation();
   return (
-    <span className="inline-flex h-[18px] shrink-0 items-center whitespace-nowrap rounded-full border border-border-strong px-1.5 text-badge text-fg-2">
+    <span className="ccs-preset-route-badge inline-flex h-[18px] shrink-0 items-center whitespace-nowrap rounded-full border border-border-strong px-1.5 text-badge text-fg-2">
       {t("providerCard.chip.needsRoute")}
     </span>
   );
@@ -632,8 +632,11 @@ function PresetPicker({
     (category !== "universal" || matchingUniversal.length === 0);
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="shrink-0 px-6 pb-3 pt-4">
+    <div
+      className="ccs-preset-picker flex h-full min-h-0 flex-col"
+      data-ccs-page="presets"
+    >
+      <div className="ccs-preset-search shrink-0 px-6 pb-3 pt-4">
         <div className="relative">
           <Search
             className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-3"
@@ -669,11 +672,11 @@ function PresetPicker({
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 gap-4 px-6 pb-4">
+      <div className="ccs-preset-body flex min-h-0 flex-1 gap-4 px-6 pb-4">
         <div
           role="group"
           aria-label={t("providerPreset.categoriesLabel")}
-          className="flex w-[168px] shrink-0 flex-col gap-0.5 overflow-y-auto"
+          className="ccs-preset-categories flex w-[168px] shrink-0 flex-col gap-0.5 overflow-y-auto"
         >
           {navItems.map((key) => (
             <CategoryButton
@@ -687,8 +690,8 @@ function PresetPicker({
           ))}
           {onUniversalPresetSelect && (
             <>
-              <div className="my-2 border-t border-border" />
-              <div className="px-2 pb-1 text-badge text-fg-3">
+              <div className="ccs-preset-cross-divider my-2 border-t border-border" />
+              <div className="ccs-preset-cross-label px-2 pb-1 text-badge text-fg-3">
                 {t("providerPreset.crossApp")}
               </div>
               <CategoryButton
@@ -702,7 +705,7 @@ function PresetPicker({
           )}
         </div>
 
-        <div className="min-w-0 flex-1 overflow-y-auto">
+        <div className="ccs-preset-results min-w-0 flex-1 overflow-y-auto">
           {category !== "all" && (
             <p className="mb-2 text-caption text-fg-2">
               {t(`providerPreset.groupHint.${category}`)}
@@ -728,7 +731,7 @@ function PresetPicker({
               </Button>
             </div>
           ) : category === "universal" ? (
-            <div className="grid grid-cols-2 gap-2">
+            <div className="ccs-preset-grid grid grid-cols-2 gap-2">
               {matchingUniversal.map((preset) => (
                 <PresetRow
                   key={`universal-${preset.providerType}`}
@@ -749,7 +752,7 @@ function PresetPicker({
                 <button
                   type="button"
                   onClick={onManageUniversalProviders}
-                  className="col-span-2 justify-self-start text-caption text-fg-1 underline underline-offset-2 hover:text-fg-2"
+                  className="ccs-preset-manage col-span-2 justify-self-start text-caption text-fg-1 underline underline-offset-2 hover:text-fg-2"
                 >
                   {t("providerPreset.manageUniversal")}
                 </button>
@@ -758,7 +761,9 @@ function PresetPicker({
           ) : category === "all" ? (
             // 「全部」按左侧分类分段，段内按名称；自定义配置固定在最上面
             <div className="flex flex-col gap-4">
-              <div className="grid grid-cols-2 gap-2">{customRow}</div>
+              <div className="ccs-preset-grid grid grid-cols-2 gap-2">
+                {customRow}
+              </div>
               {sectionPresetRows(shown).map((section) => (
                 <section
                   key={section.group}
@@ -771,14 +776,14 @@ function PresetPicker({
                   >
                     {t(`providerPreset.group.${section.group}`)}
                   </h3>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="ccs-preset-grid grid grid-cols-2 gap-2">
                     {section.items.map(renderRow)}
                   </div>
                 </section>
               ))}
             </div>
           ) : (
-            <div className="grid grid-cols-2 gap-2">
+            <div className="ccs-preset-grid grid grid-cols-2 gap-2">
               {customRow}
               {shown.map(renderRow)}
             </div>
@@ -843,12 +848,12 @@ function CategoryButton({
       aria-pressed={active}
       onClick={onClick}
       className={cn(
-        "flex h-8 items-center justify-between gap-2 rounded-control px-2 text-start text-body transition-colors",
+        "ccs-preset-category flex h-8 items-center justify-between gap-2 rounded-control px-2 text-start text-body transition-colors",
         active ? "bg-selected font-medium text-fg-1" : "hover:bg-subtle",
         !active && (dim ? "text-fg-3" : "text-fg-1"),
       )}
     >
-      <span className="truncate">{label}</span>
+      <span className="ccs-preset-category-label truncate">{label}</span>
       <span className="shrink-0 text-caption tabular-nums text-fg-3">
         {count}
       </span>
@@ -879,21 +884,21 @@ function PresetRow({
       aria-label={name}
       aria-description={detail}
       className={cn(
-        "flex h-[52px] min-w-0 items-center gap-3 rounded-panel border bg-surface px-3 text-start transition-colors hover:bg-subtle",
+        "ccs-preset-row flex h-[52px] min-w-0 items-center gap-3 rounded-panel border bg-surface px-3 text-start transition-colors hover:bg-subtle",
         selected ? "border-border-strong" : "border-border",
       )}
     >
       {icon}
-      <span className="min-w-0 flex-1">
+      <span className="ccs-preset-copy min-w-0 flex-1">
         <span
-          className="block truncate text-body font-medium text-fg-1"
+          className="ccs-preset-name block truncate text-body font-medium text-fg-1"
           title={name}
         >
           {name}
         </span>
         {detail && (
           <span
-            className="block truncate text-caption text-fg-2"
+            className="ccs-preset-detail block truncate text-caption text-fg-2"
             title={detail}
           >
             {detail}

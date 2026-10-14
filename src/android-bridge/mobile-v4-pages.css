@@ -625,4 +625,96 @@
   .ccs-import-button > svg {
     flex-shrink: 0;
   }
+
+  /* Preset selection: categories must not steal the phone's card width. */
+  .ccs-preset-picker,
+  .ccs-preset-search,
+  .ccs-preset-body,
+  .ccs-preset-categories,
+  .ccs-preset-results,
+  .ccs-preset-grid,
+  .ccs-preset-row,
+  .ccs-preset-copy {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .ccs-preset-search,
+  .ccs-preset-body {
+    padding-inline: 12px;
+  }
+
+  /* One scroll area keeps cards reachable with a keyboard or enlarged text. */
+  .ccs-preset-body {
+    flex-direction: column;
+    gap: 12px;
+    overflow-y: auto;
+  }
+
+  .ccs-preset-categories {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    flex: none;
+    width: 100%;
+    gap: 4px;
+    overflow-y: visible;
+  }
+
+  .ccs-preset-category {
+    min-width: 0;
+    height: auto;
+    min-height: 40px;
+    padding-block: 8px;
+  }
+
+  .ccs-preset-category-label,
+  .ccs-preset-name,
+  .ccs-preset-detail {
+    min-width: 0;
+    white-space: normal;
+    overflow: visible;
+    overflow-wrap: anywhere;
+    text-overflow: clip;
+    line-height: 1.4;
+  }
+
+  .ccs-preset-cross-divider,
+  .ccs-preset-cross-label {
+    grid-column: 1 / -1;
+  }
+
+  .ccs-preset-results {
+    flex: none;
+    width: 100%;
+    overflow-y: visible;
+  }
+
+  .ccs-preset-grid {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+  }
+
+  .ccs-preset-row {
+    display: grid;
+    grid-template-columns: 32px minmax(0, 1fr);
+    height: auto;
+    min-height: 52px;
+    gap: 6px 10px;
+    padding: 10px;
+  }
+
+  .ccs-preset-row > .ccs-preset-route-badge {
+    grid-column: 2;
+    justify-self: start;
+    max-width: 100%;
+    height: auto;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .ccs-preset-manage {
+    grid-column: 1 / -1;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
 }
