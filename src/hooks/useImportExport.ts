@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "@/lib/toast";
 import { settingsApi } from "@/lib/api";
@@ -39,18 +39,49 @@ export function useImportExport(
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [backupId, setBackupId] = useState<string | null>(null);
   const [isImporting, setIsImporting] = useState(false);
+  const mounted = useRef(true);
+  const selectedCopy = useRef("");
+  const releaseCopy = useCallback((path: string) => {
+    if (!path) return;
+    try {
+      settingsApi.releaseImportFile?.(path);
+    } catch {
+      console.warn(
+        "[useImportExport] Unable to release temporary SQL selection",
+      );
+    }
+  }, []);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      const path = selectedCopy.current;
+      selectedCopy.current = "";
+      releaseCopy(path);
+    };
+  }, [releaseCopy]);
 
   const clearSelection = useCallback(() => {
+    const path = selectedCopy.current;
+    selectedCopy.current = "";
+    releaseCopy(path);
     setSelectedFile("");
     setStatus("idle");
     setErrorMessage(null);
     setBackupId(null);
-  }, []);
+  }, [releaseCopy]);
 
   const selectImportFile = useCallback(async () => {
     try {
       const filePath = await settingsApi.openFileDialog();
       if (filePath) {
+        if (!mounted.current) {
+          releaseCopy(filePath);
+          return;
+        }
+        const previous = selectedCopy.current;
+        selectedCopy.current = filePath;
+        if (previous !== filePath) releaseCopy(previous);
         setSelectedFile(filePath);
         setStatus("idle");
         setErrorMessage(null);
@@ -63,7 +94,7 @@ export function useImportExport(
         }),
       );
     }
-  }, [t]);
+  }, [t, releaseCopy]);
 
   const importConfig = useCallback(async () => {
     if (!selectedFile) {

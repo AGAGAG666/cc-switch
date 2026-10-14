@@ -43,7 +43,7 @@ export function ImportExportSection({
   }, [selectedFile]);
 
   return (
-    <section className="space-y-4">
+    <section className="ccs-import-export space-y-4">
       <header className="space-y-2">
         <h3 className="text-base font-semibold text-fg-1">
           {t("settings.importExport")}
@@ -51,18 +51,18 @@ export function ImportExportSection({
         <p className="text-sm text-fg-2">{t("settings.importExportHint")}</p>
       </header>
 
-      <div className="space-y-4 rounded-lg border border-border bg-subtle p-6">
+      <div className="ccs-import-panel space-y-4 rounded-lg border border-border bg-subtle p-6">
         {/* Import and Export Buttons Side by Side */}
-        <div className="grid grid-cols-2 gap-4 items-stretch">
+        <div className="ccs-import-actions grid grid-cols-2 gap-4 items-stretch">
           {/* Import Button */}
           <div className="relative">
             <Button
               type="button"
-              className={`w-full h-auto py-3 px-4 bg-action hover:bg-action-hover text-action-fg ${selectedFile && !isImporting ? "flex-col items-start" : "items-center"}`}
+              className={`ccs-import-button w-full h-auto py-3 px-4 bg-action hover:bg-action-hover text-action-fg ${selectedFile && !isImporting ? "flex-col items-start" : "items-center"}`}
               onClick={!selectedFile ? onSelectFile : onImport}
               disabled={isImporting}
             >
-              <div className="flex items-center gap-2 w-full justify-center">
+              <div className="ccs-import-button-content flex items-center gap-2 w-full justify-center">
                 {isImporting ? (
                   <Loader2 className="h-4 w-4 animate-spin flex-shrink-0" />
                 ) : selectedFile ? (
@@ -70,7 +70,7 @@ export function ImportExportSection({
                 ) : (
                   <FolderOpen className="h-4 w-4 flex-shrink-0" />
                 )}
-                <span className="font-medium">
+                <span className="ccs-import-button-label font-medium">
                   {isImporting
                     ? t("settings.importing")
                     : selectedFile
@@ -102,11 +102,13 @@ export function ImportExportSection({
           <div>
             <Button
               type="button"
-              className="w-full h-full py-3 px-4 bg-action hover:bg-action-hover text-action-fg items-center"
+              className="ccs-import-button w-full h-full py-3 px-4 bg-action hover:bg-action-hover text-action-fg items-center"
               onClick={onExport}
             >
               <Save className="h-4 w-4" />
-              {t("settings.exportConfig")}
+              <span className="ccs-import-button-label">
+                {t("settings.exportConfig")}
+              </span>
             </Button>
           </div>
         </div>

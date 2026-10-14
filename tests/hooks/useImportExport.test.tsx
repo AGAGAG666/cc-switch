@@ -16,6 +16,7 @@ vi.mock("sonner", () => ({
 
 const openFileDialogMock = vi.fn();
 const importConfigMock = vi.fn();
+const releaseImportFileMock = vi.fn();
 const saveFileDialogMock = vi.fn();
 const exportConfigMock = vi.fn();
 const syncCurrentProvidersLiveMock = vi.fn();
@@ -23,6 +24,7 @@ const syncCurrentProvidersLiveMock = vi.fn();
 vi.mock("@/lib/api", () => ({
   settingsApi: {
     openFileDialog: (...args: unknown[]) => openFileDialogMock(...args),
+    releaseImportFile: (...args: unknown[]) => releaseImportFileMock(...args),
     importConfigFromFile: (...args: unknown[]) => importConfigMock(...args),
     saveFileDialog: (...args: unknown[]) => saveFileDialogMock(...args),
     exportConfigToFile: (...args: unknown[]) => exportConfigMock(...args),
@@ -33,6 +35,7 @@ vi.mock("@/lib/api", () => ({
 
 beforeEach(() => {
   openFileDialogMock.mockReset();
+  releaseImportFileMock.mockReset();
   importConfigMock.mockReset();
   saveFileDialogMock.mockReset();
   exportConfigMock.mockReset();
@@ -48,6 +51,90 @@ afterEach(() => {
 });
 
 describe("useImportExport Hook", () => {
+  it("releases a selection if unmounted before its React state commit", async () => {
+    openFileDialogMock.mockResolvedValue("/cache/precommit.sql");
+    const { result, unmount } = renderHook(() => useImportExport());
+    await act(async () => {
+      await result.current.selectImportFile();
+      unmount();
+    });
+    expect(releaseImportFileMock).toHaveBeenCalledTimes(1);
+    expect(releaseImportFileMock).toHaveBeenCalledWith("/cache/precommit.sql");
+  });
+
+  it("releases every copy when two selections complete in one React batch", async () => {
+    openFileDialogMock
+      .mockResolvedValueOnce("/cache/batched-first.sql")
+      .mockResolvedValueOnce("/cache/batched-second.sql");
+    const { result, unmount } = renderHook(() => useImportExport());
+    await act(async () => {
+      await result.current.selectImportFile();
+      await result.current.selectImportFile();
+    });
+    expect(releaseImportFileMock).toHaveBeenCalledTimes(1);
+    expect(releaseImportFileMock).toHaveBeenCalledWith(
+      "/cache/batched-first.sql",
+    );
+    unmount();
+    expect(releaseImportFileMock.mock.calls).toEqual([
+      ["/cache/batched-first.sql"],
+      ["/cache/batched-second.sql"],
+    ]);
+  });
+
+  it("releases a picker result arriving after the settings page unmounts", async () => {
+    let finish!: (path: string) => void;
+    openFileDialogMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const { result, unmount } = renderHook(() => useImportExport());
+    let selecting!: Promise<void>;
+    act(() => {
+      selecting = result.current.selectImportFile();
+    });
+    unmount();
+    await act(async () => {
+      finish("/cache/late.sql");
+      await selecting;
+    });
+    expect(releaseImportFileMock).toHaveBeenCalledWith("/cache/late.sql");
+    expect(importConfigMock).not.toHaveBeenCalled();
+  });
+
+  it("releases private copies on clear and replacement, not on selection alone", async () => {
+    openFileDialogMock
+      .mockResolvedValueOnce("/cache/first.sql")
+      .mockResolvedValueOnce("/cache/second.sql");
+    const { result, unmount } = renderHook(() => useImportExport());
+    await act(async () => {
+      await result.current.selectImportFile();
+    });
+    expect(releaseImportFileMock).not.toHaveBeenCalled();
+    await act(async () => {
+      await result.current.selectImportFile();
+    });
+    expect(releaseImportFileMock).toHaveBeenCalledWith("/cache/first.sql");
+    act(() => {
+      result.current.clearSelection();
+    });
+    expect(releaseImportFileMock).toHaveBeenCalledWith("/cache/second.sql");
+    expect(importConfigMock).not.toHaveBeenCalled();
+    unmount();
+  });
+
+  it("releases a selection when the settings page unmounts", async () => {
+    openFileDialogMock.mockResolvedValue("/cache/selected.sql");
+    const { result, unmount } = renderHook(() => useImportExport());
+    await act(async () => {
+      await result.current.selectImportFile();
+    });
+    unmount();
+    expect(releaseImportFileMock).toHaveBeenCalledWith("/cache/selected.sql");
+  });
+
   it("should update state after successfully selecting file", async () => {
     openFileDialogMock.mockResolvedValue("/path/config.json");
     const { result } = renderHook(() => useImportExport());

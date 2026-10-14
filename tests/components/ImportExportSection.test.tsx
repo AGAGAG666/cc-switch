@@ -29,6 +29,26 @@ describe("ImportExportSection Component", () => {
     baseProps.onClear.mockReset();
   });
 
+  it("exposes scoped mobile hooks for both SQL action labels", () => {
+    const { container } = render(<ImportExportSection {...baseProps} />);
+    const grid = container.querySelector(".ccs-import-actions");
+    expect(grid).toHaveClass("grid-cols-2");
+    expect(grid?.querySelectorAll(".ccs-import-button-label")).toHaveLength(2);
+    expect(grid?.querySelectorAll(".ccs-import-button")).toHaveLength(2);
+  });
+
+  it("keeps SQL import explicit after selecting a cached file", () => {
+    render(
+      <ImportExportSection
+        {...baseProps}
+        selectedFile="/cache/private/备份.sql"
+      />,
+    );
+    expect(baseProps.onImport).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: /settings\.import/ }));
+    expect(baseProps.onImport).toHaveBeenCalledOnce();
+  });
+
   it("should disable import button and show placeholder when no file selected", () => {
     render(<ImportExportSection {...baseProps} />);
 

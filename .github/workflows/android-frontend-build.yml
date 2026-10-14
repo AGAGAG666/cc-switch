@@ -61,7 +61,7 @@ jobs:
         run: pnpm typecheck:android
 
       - name: Android bridge regression tests
-        run: pnpm exec vitest run src/android-bridge/runtime.test.ts src/android-bridge/deeplink.test.ts
+        run: pnpm exec vitest run src/android-bridge/runtime.test.ts src/android-bridge/runtime.file-picker.test.ts src/android-bridge/deeplink.test.ts
 
       - name: Android mobile layout regression tests
         run: >-
@@ -70,6 +70,9 @@ jobs:
           tests/components/AndroidV4MobileLayout.test.tsx
           tests/components/AndroidV4PageHooks.test.ts
           tests/components/ProviderCardLayout.test.ts
+          tests/components/ImportExportSection.test.tsx
+          tests/hooks/useImportExport.test.tsx
+          tests/hooks/useImportExport.extra.test.tsx
           --maxWorkers=1 --no-file-parallelism
 
       - name: Build renderer (android)

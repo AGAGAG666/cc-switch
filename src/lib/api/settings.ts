@@ -148,6 +148,13 @@ export const settingsApi = {
     return await invoke("open_file_dialog");
   },
 
+  /** Android-owned SQL copies only; desktop has no native bridge and stays a no-op. */
+  releaseImportFile(filePath: string): void {
+    const host = window.__CCS_HOST__;
+    if (host?.releaseSqlImport) host.releaseSqlImport(filePath);
+    else window.__CCS_NATIVE__?.releaseSqlImport?.(filePath);
+  },
+
   async exportConfigToFile(filePath: string): Promise<ConfigTransferResult> {
     return await invoke("export_config_to_file", { filePath });
   },

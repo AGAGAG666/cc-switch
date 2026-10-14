@@ -586,4 +586,43 @@
     min-width: 0;
     max-width: 100%;
   }
+
+  /* SQL actions must fit their card without shrinking or clipping labels. */
+  .ccs-import-export,
+  .ccs-import-panel,
+  .ccs-import-actions,
+  .ccs-import-actions > div {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .ccs-import-panel {
+    padding: 12px;
+  }
+
+  .ccs-import-actions {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .ccs-import-button {
+    min-width: 0;
+    max-width: 100%;
+    height: auto;
+    min-height: 40px;
+    white-space: normal;
+  }
+
+  .ccs-import-button-content,
+  .ccs-import-button-label {
+    min-width: 0;
+    max-width: 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: 1.5;
+  }
+
+  .ccs-import-button > svg {
+    flex-shrink: 0;
+  }
 }

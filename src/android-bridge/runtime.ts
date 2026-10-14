@@ -23,6 +23,10 @@ declare global {
       openUrl?: (url: string) => void;
       openPath?: (path: string) => void;
       pickFolder?: () => Promise<string | null>;
+      pickFile?: () => Promise<string | null>;
+      beginSqlImport?: (path: string) => boolean;
+      endSqlImport?: (path: string) => void;
+      releaseSqlImport?: (path: string) => void;
       restart?: () => void;
       exit?: (code: number) => void;
       /** 把 ZeroTermux 任务移到后台（对应桌面的最小化）。 */
@@ -39,6 +43,10 @@ declare global {
       openUrl?: (url: string) => void;
       openPath?: (path: string) => void;
       pickFolder?: (requestId: number) => void;
+      pickFile?: (requestId: string) => void;
+      beginSqlImport?: (path: string) => boolean;
+      endSqlImport?: (path: string) => void;
+      releaseSqlImport?: (path: string) => void;
       homeDir?: () => string;
       /** 取出宿主暂存的一条 ccswitch:// 入站链接；读取后即从宿主清除。 */
       takePendingDeepLink?: () => string;
@@ -50,6 +58,12 @@ declare global {
     };
     /** 宿主完成目录选择后回调（由本模块安装）。 */
     __ccsResolveFolderPick?: (requestId: number, path: string | null) => void;
+    /** SQL 文件选择：真实缓存路径、用户取消或读取错误。 */
+    __ccsResolveFilePick?: (
+      requestId: string,
+      path: string | null,
+      error: string | null,
+    ) => void;
     /** 新 Intent 到达时由宿主调用，通知确认弹窗拉取暂存链接。 */
     __ccsPullPendingDeepLink?: () => void;
   }
@@ -59,6 +73,28 @@ type HostSurface = NonNullable<Window["__CCS_HOST__"]>;
 
 let folderPickSeq = 0;
 const folderPickWaiters = new Map<number, (path: string | null) => void>();
+const pickedSqlFiles = new Set<string>();
+let filePickSeq = 0;
+const filePickPageId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+const filePickWaiters = new Map<
+  string,
+  { resolve: (path: string | null) => void; reject: (error: Error) => void }
+>();
+
+window.addEventListener("pagehide", () => {
+  for (const waiter of filePickWaiters.values()) {
+    waiter.reject(new Error("页面已关闭，SQL 文件选择已取消"));
+  }
+  filePickWaiters.clear();
+  for (const path of pickedSqlFiles) {
+    try {
+      resolveHost()?.releaseSqlImport?.(path);
+    } catch {
+      /* Host may already be gone. */
+    }
+  }
+  pickedSqlFiles.clear();
+});
 
 /**
  * 由 `__CCS_NATIVE__` 现场合成宿主面。
@@ -82,6 +118,19 @@ function buildHostFromNative(): HostSurface | undefined {
     };
   }
 
+  if (!window.__ccsResolveFilePick) {
+    window.__ccsResolveFilePick = (requestId, path, error) => {
+      const waiter = filePickWaiters.get(requestId);
+      if (!waiter) return;
+      filePickWaiters.delete(requestId);
+      if (error) waiter.reject(new Error(error));
+      else {
+        if (path) pickedSqlFiles.add(path);
+        waiter.resolve(path || null);
+      }
+    };
+  }
+
   return {
     openUrl: (url) => n.openUrl?.(url),
     openPath: (path) => n.openPath?.(path),
@@ -101,6 +150,35 @@ function buildHostFromNative(): HostSurface | undefined {
           resolve(null);
         }
       }),
+    pickFile: () =>
+      new Promise<string | null>((resolve, reject) => {
+        if (!n.pickFile) {
+          reject(
+            new Error("当前宿主不支持系统文件选择，请更新 ZeroTermux-CCS"),
+          );
+          return;
+        }
+        if (filePickWaiters.size) {
+          reject(new Error("已有 SQL 文件选择正在进行"));
+          return;
+        }
+        const id = `${filePickPageId}-${++filePickSeq}`;
+        filePickWaiters.set(id, { resolve, reject });
+        try {
+          n.pickFile(id);
+        } catch {
+          filePickWaiters.delete(id);
+          reject(new Error("无法打开系统文件选择器"));
+        }
+      }),
+    beginSqlImport: n.beginSqlImport
+      ? (path) => n.beginSqlImport!(path)
+      : undefined,
+    endSqlImport: n.endSqlImport ? (path) => n.endSqlImport!(path) : undefined,
+    releaseSqlImport: (path) => {
+      pickedSqlFiles.delete(path);
+      n.releaseSqlImport?.(path);
+    },
     restart: () => n.restart?.(),
     exit: (code) => n.exit?.(code),
     minimize: () => n.minimize?.(),
@@ -115,7 +193,20 @@ function buildHostFromNative(): HostSurface | undefined {
  */
 function resolveHost(): HostSurface | undefined {
   const injected = window.__CCS_HOST__;
-  if (injected) return injected;
+  if (injected) {
+    const native = buildHostFromNative();
+    if (!native) return injected;
+    // Preserve existing host methods while completing only missing SQL capabilities.
+    const merged = {
+      ...injected,
+      pickFile: injected.pickFile ?? native.pickFile,
+      beginSqlImport: injected.beginSqlImport ?? native.beginSqlImport,
+      endSqlImport: injected.endSqlImport ?? native.endSqlImport,
+      releaseSqlImport: injected.releaseSqlImport ?? native.releaseSqlImport,
+    };
+    window.__CCS_HOST__ = merged;
+    return merged;
+  }
   const synthesized = buildHostFromNative();
   if (synthesized) window.__CCS_HOST__ = synthesized;
   return synthesized;
@@ -303,10 +394,60 @@ export async function invoke<T>(
   cmd: string,
   args?: Record<string, unknown>,
 ): Promise<T> {
+  if (cmd === "open_file_dialog") {
+    const host = resolveHost();
+    if (!host?.pickFile) {
+      throw new Error("系统 SQL 文件选择需要在新版 ZeroTermux-CCS 内打开");
+    }
+    const path = await host.pickFile();
+    if (path) pickedSqlFiles.add(path);
+    return path as T;
+  }
   if (HOST_ONLY_COMMANDS.has(cmd)) {
     return (await pickFolder()) as unknown as T;
   }
 
+  const path = typeof args?.filePath === "string" ? args.filePath : null;
+  const owned =
+    cmd === "import_config_from_file" && path && pickedSqlFiles.has(path);
+  const host = owned ? resolveHost() : undefined;
+  if (owned) {
+    if (!host?.beginSqlImport || !host.endSqlImport) {
+      throw new Error("当前宿主不支持安全的 SQL 导入，请更新 ZeroTermux-CCS");
+    }
+    if (!host.beginSqlImport(path)) {
+      throw new Error("SQL 临时副本已失效，请重新选择备份文件");
+    }
+  }
+  let rpcStarted = false;
+  let rpcCompleted = false;
+  try {
+    return await invokeSidecar<T>(cmd, args, {
+      started: () => {
+        rpcStarted = true;
+      },
+      completed: () => {
+        rpcCompleted = true;
+      },
+    });
+  } finally {
+    // A transport failure cannot prove the sidecar stopped reading the copy.
+    // Fail closed: retain its pin rather than delete data still in use.
+    if (owned && (!rpcStarted || rpcCompleted)) {
+      try {
+        host!.endSqlImport!(path);
+      } catch {
+        console.warn("[ccs] SQL temporary copy remains pinned");
+      }
+    }
+  }
+}
+
+async function invokeSidecar<T>(
+  cmd: string,
+  args?: Record<string, unknown>,
+  lifecycle?: { started: () => void; completed: () => void },
+): Promise<T> {
   const h = await waitForHandshake();
   const base = resolveSidecarBaseUrl(h);
   if (cmd === "stream_session_messages") {
@@ -316,8 +457,10 @@ export async function invoke<T>(
     return (await readSessionImage(base, h.token, args)) as T;
   }
 
+  const body = JSON.stringify(args ?? {});
   let res: Response;
   try {
+    lifecycle?.started();
     res = await fetch(
       `${resolveSidecarBaseUrl(h)}/rpc/${encodeURIComponent(cmd)}`,
       {
@@ -326,7 +469,7 @@ export async function invoke<T>(
           "Content-Type": "application/json",
           "X-CCS-Token": h.token,
         },
-        body: JSON.stringify(args ?? {}),
+        body,
       },
     );
   } catch (e) {
@@ -334,9 +477,11 @@ export async function invoke<T>(
   }
 
   if (res.status === 404) {
+    lifecycle?.completed();
     throw `未知命令：${cmd}`;
   }
   if (res.status === 401) {
+    lifecycle?.completed();
     throw `cc-switch 服务鉴权失败（token 不匹配），请重启 cc-switch 页面`;
   }
   if (!res.ok) {
@@ -344,6 +489,7 @@ export async function invoke<T>(
   }
 
   const envelope = (await res.json()) as RpcEnvelope;
+  if (typeof envelope.ok === "boolean") lifecycle?.completed();
   if (!envelope.ok) {
     if (cmd === "set_proxy_stack_member" && envelope.error) {
       try {

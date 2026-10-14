@@ -17,6 +17,7 @@ const pages = [
   "src/components/usage/UsageTrendChart.tsx",
   "src/components/settings/AuthCenterPanel.tsx",
   "src/components/apps/AppsPage.tsx",
+  "src/components/settings/ImportExportSection.tsx",
 ];
 
 function attributes(file: string) {
@@ -75,7 +76,9 @@ describe("Android V4 page CSS boundary", () => {
     css.walkRules((rule) => {
       // Split selector lists, preserving commas inside :has() and :not().
       for (const selector of rule.selectors) {
-        const scope = /^\.(ccs-(?:usage|auth|apps)-[\w-]+)/.exec(selector);
+        const scope = /^\.(ccs-(?:usage|auth|apps|import)-[\w-]+)/.exec(
+          selector,
+        );
         expect(scope, selector).not.toBeNull();
         expect(classes.has(scope![1]), selector).toBe(true);
         expect(selector).not.toMatch(/(?:^|[ >+~])\.flex(?:[ :>+~]|$)/);
