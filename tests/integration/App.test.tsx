@@ -18,6 +18,8 @@ import {
 } from "../msw/state";
 import { emitTauriEvent } from "../msw/tauriMocks";
 import { server } from "../msw/server";
+// Collect App before per-test timers start; a timed-out import can outlive cleanup.
+import App from "@/App";
 
 const toastSuccessMock = vi.fn();
 const toastErrorMock = vi.fn();
@@ -203,7 +205,6 @@ describe("App integration with MSW", () => {
   });
 
   it("covers basic provider flows via real hooks", async () => {
-    const { default: App } = await import("@/App");
     renderApp(App);
 
     await waitFor(() =>
@@ -260,7 +261,6 @@ describe("App integration with MSW", () => {
   }, 10_000);
 
   it("resets provider view scroll when switching apps", async () => {
-    const { default: App } = await import("@/App");
     const { container } = renderApp(App);
 
     await waitFor(() =>
@@ -297,7 +297,6 @@ describe("App integration with MSW", () => {
   }, 10_000);
 
   it("closes provider panels when navigating away from the app page", async () => {
-    const { default: App } = await import("@/App");
     renderApp(App);
 
     await waitFor(() =>
@@ -341,7 +340,6 @@ describe("App integration with MSW", () => {
   }, 10_000);
 
   it("asks before leaving an editor page with unsaved changes", async () => {
-    const { default: App } = await import("@/App");
     renderApp(App);
     await waitFor(() =>
       expect(screen.getByTestId("provider-list").textContent).toContain(
@@ -388,7 +386,6 @@ describe("App integration with MSW", () => {
   }, 10_000);
 
   it("shows toast when auto sync fails in background", async () => {
-    const { default: App } = await import("@/App");
     renderApp(App);
 
     await waitFor(() =>
@@ -448,7 +445,6 @@ describe("App integration with MSW", () => {
     setCurrentProviderId("openclaw", "deepseek");
     setLiveProviderIds("openclaw", ["deepseek-copy"]);
 
-    const { default: App } = await import("@/App");
     renderApp(App);
 
     fireEvent.click(sidebarApp("OpenClaw"));
@@ -494,7 +490,6 @@ describe("App integration with MSW", () => {
       const add = vi.spyOn(providersApi, "add");
       const sort = vi.spyOn(providersApi, "updateSortOrder");
       try {
-        const { default: App } = await import("@/App");
         renderApp(App);
         await waitFor(() =>
           expect(screen.getByTestId("provider-list").textContent).toContain(
@@ -534,7 +529,7 @@ describe("App integration with MSW", () => {
     });
     setCurrentProviderId("opencode", "custom");
     setLiveProviderIds("opencode", ["custom-copy"]);
-    const { default: App } = await import("@/App");
+
     renderApp(App);
     await waitFor(() =>
       expect(screen.getByTestId("provider-list").textContent).toContain(
@@ -573,7 +568,6 @@ describe("App integration with MSW", () => {
       setLiveProviderIds("opencode", ["native"]);
       const add = vi.spyOn(providersApi, "add");
       try {
-        const { default: App } = await import("@/App");
         renderApp(App);
         await waitFor(() =>
           expect(screen.getByTestId("provider-list").textContent).toContain(
@@ -609,7 +603,7 @@ describe("App integration with MSW", () => {
     });
     setCurrentProviderId("opencode", "native");
     setLiveProviderIds("opencode", ["native-copy"]);
-    const { default: App } = await import("@/App");
+
     renderApp(App);
     await waitFor(() =>
       expect(screen.getByTestId("provider-list").textContent).toContain(
@@ -641,7 +635,6 @@ describe("App integration with MSW", () => {
     });
     setCurrentProviderId("mcode", "kimi");
 
-    const { default: App } = await import("@/App");
     renderApp(App);
 
     await waitFor(() =>
@@ -689,7 +682,6 @@ describe("App integration with MSW", () => {
       ),
     );
 
-    const { default: App } = await import("@/App");
     renderApp(App);
 
     await waitFor(() =>
@@ -742,7 +734,6 @@ describe("App integration with MSW", () => {
       ),
     );
 
-    const { default: App } = await import("@/App");
     renderApp(App);
 
     await waitFor(() =>
@@ -783,7 +774,6 @@ describe("App integration with MSW", () => {
       .spyOn(providersApi, "getOpenClawLiveProviderIds")
       .mockRejectedValueOnce(new Error("broken config"));
 
-    const { default: App } = await import("@/App");
     renderApp(App);
 
     fireEvent.click(sidebarApp("OpenClaw"));
@@ -811,7 +801,7 @@ describe("App integration with MSW", () => {
 
   it("renders the Skills page with its own header", async () => {
     localStorage.setItem("cc-switch-last-view", "skills");
-    const { default: App } = await import("@/App");
+
     renderApp(App);
 
     expect(await screen.findByTestId("unified-skills-panel")).toHaveTextContent(
@@ -820,7 +810,6 @@ describe("App integration with MSW", () => {
   });
 
   it("navigates OpenClaw and Hermes pages with underline tabs", async () => {
-    const { default: App } = await import("@/App");
     renderApp(App);
 
     fireEvent.click(sidebarApp("OpenClaw"));
@@ -899,7 +888,7 @@ describe("App integration with MSW", () => {
 
   it("opens the old skillsDiscovery view as the Discover segment", async () => {
     localStorage.setItem("cc-switch-last-view", "skillsDiscovery");
-    const { default: App } = await import("@/App");
+
     renderApp(App);
 
     expect(await screen.findByTestId("unified-skills-panel")).toHaveTextContent(

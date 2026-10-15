@@ -1,4 +1,4 @@
-> **Android fork (`android-sidecar-v4-test`):** This is an experimental, unpublished Android adaptation for [ZeroTermux-CCS](https://github.com/AGAGAG666/ZeroTermux-CCS), not an official upstream build. The stable Android APK still uses the v3.20.0-based `android-sidecar` branch.
+> **Android fork:** Unofficial Android integration for [ZeroTermux-CCS](https://github.com/AGAGAG666/ZeroTermux-CCS), based on upstream [v4.0.9](https://github.com/farion1231/cc-switch/releases/tag/v4.0.9). See [Android integration](README.android.md) for features, platform support, and build instructions.
 
 <div align="center">
 

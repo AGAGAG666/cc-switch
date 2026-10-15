@@ -10,6 +10,8 @@ on:
     branches: [android-sidecar]
     paths:
       - "src/**"
+      - "tests/**"
+      - "vitest.config.ts"
       - "package.json"
       - "pnpm-lock.yaml"
       - "vite.config.ts"
@@ -70,10 +72,14 @@ jobs:
           tests/components/AndroidV4MobileLayout.test.tsx
           tests/components/AndroidV4PageHooks.test.ts
           tests/components/ProviderCardLayout.test.ts
+          tests/components/ProviderPresetSelector.test.tsx
           tests/components/ImportExportSection.test.tsx
           tests/hooks/useImportExport.test.tsx
           tests/hooks/useImportExport.extra.test.tsx
           --maxWorkers=1 --no-file-parallelism
+
+      - name: App integration regression tests
+        run: pnpm exec vitest run tests/integration/App.test.tsx --maxWorkers=1 --no-file-parallelism
 
       - name: Build renderer (android)
         run: pnpm build:android

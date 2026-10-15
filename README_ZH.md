@@ -1,3 +1,5 @@
+> **Android 定制版：** 本仓库为 [ZeroTermux-CCS](https://github.com/AGAGAG666/ZeroTermux-CCS) 的非官方 Android 适配，基于上游 [v4.0.9](https://github.com/farion1231/cc-switch/releases/tag/v4.0.9)。功能、平台支持和构建说明见 [README.android.md](README.android.md)。
+
 <div align="center">
 
 # CC Switch
