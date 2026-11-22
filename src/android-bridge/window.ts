@@ -1,15 +1,15 @@
 /**
  * `@tauri-apps/api/window` 的 Android 替身。
  *
- * WebView 永远是「全屏、无边框、单窗口」。上游只用到 6 个方法（见 App.tsx），
- * 逐个给出 Android 上语义最接近的行为，而不是一律 no-op：
+ * WebView 永远是「全屏、无边框、单窗口」。
+ * 浏览器可提供的窗口状态来自 DOM：
  *   - isMaximized -> 恒 true（前端据此隐藏「还原」按钮）
  *   - onResized   -> 转 window resize（旋转屏 / 输入法弹出时确实会触发）
  *   - minimize    -> 请宿主把任务移到后台
  *   - close       -> 请宿主关闭 cc-switch 页面
  *   - setDecorations / toggleMaximize -> 无对应概念，安静忽略
  */
-import { requestHostAction } from "./runtime";
+import { listen, requestHostAction, type Event } from "./runtime";
 
 export type Theme = "light" | "dark";
 export type UnlistenFn = () => void;
@@ -33,6 +33,36 @@ class AndroidWindow {
 
   async isFullscreen(): Promise<boolean> {
     return true;
+  }
+
+  async isVisible(): Promise<boolean> {
+    return document.visibilityState !== "hidden";
+  }
+
+  async isFocused(): Promise<boolean> {
+    return document.hasFocus();
+  }
+
+  async isResizable(): Promise<boolean> {
+    return false;
+  }
+
+  async scaleFactor(): Promise<number> {
+    return window.devicePixelRatio || 1;
+  }
+
+  listen<T>(event: string, handler: (event: Event<T>) => void) {
+    return listen(event, handler);
+  }
+
+  async onScaleChanged(handler: () => void): Promise<UnlistenFn> {
+    let scale = await this.scaleFactor();
+    return this.onResized(() => {
+      const next = window.devicePixelRatio || 1;
+      if (next === scale) return;
+      scale = next;
+      handler();
+    });
   }
 
   async onResized(handler: () => void): Promise<UnlistenFn> {

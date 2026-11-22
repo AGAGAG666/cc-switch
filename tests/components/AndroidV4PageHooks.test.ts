@@ -103,16 +103,12 @@ describe("Android V4 page CSS boundary", () => {
     });
   });
 
-  it("registers the three pages and all auth providers without account data", () => {
+  it("registers every page root and the shared auth section hook", () => {
     expect(hooks[0].data.get("data-ccs-page")).toEqual(["usage"]);
     expect(hooks[3].data.get("data-ccs-page")).toEqual(["auth"]);
     expect(hooks[4].data.get("data-ccs-page")).toEqual(["apps"]);
     expect(hooks[6].data.get("data-ccs-page")).toEqual(["presets"]);
-    expect(hooks[3].data.get("data-ccs-auth-provider")).toEqual([
-      "copilot",
-      "codex",
-      "xai",
-    ]);
+    expect(hooks[3].classes.has("ccs-auth-section")).toBe(true);
   });
 
   it("keeps the shared auth DOM selectors anchored to their current components", () => {
@@ -120,9 +116,99 @@ describe("Android V4 page CSS boundary", () => {
       "src/components/settings/auth/ManagedAccountsGroup.tsx",
     );
     const quota = attributes("src/components/settings/auth/AccountQuota.tsx");
-    expect(group.classes.has("min-h-[56px]")).toBe(true);
-    for (const width of ["w-[212px]", "w-[272px]", "w-[84px]"]) {
-      expect(quota.classes.has(width), width).toBe(true);
+    for (const hook of ["auth-account-row", "auth-account-quota"]) {
+      expect(group.classes.has(hook), hook).toBe(true);
+    }
+    for (const hook of ["auth-quota-col", "auth-quota-refresh"]) {
+      expect(quota.classes.has(hook), hook).toBe(true);
+    }
+  });
+
+  it("anchors the v4.0.38 usage and apps overrides to their real DOM owners", () => {
+    const expected = new Map([
+      [
+        "src/components/usage/UsageDashboard.tsx",
+        [
+          "ccs-usage-page",
+          "ccs-usage-body",
+          "ccs-usage-filters",
+          "ccs-usage-filter-spacer",
+          "ccs-usage-filter-trigger",
+          "ccs-usage-app-filter",
+          "ccs-usage-tabbar",
+          "ccs-usage-tabpanel",
+        ],
+      ],
+      [
+        "src/components/usage/UsageDateRangePicker.tsx",
+        ["ccs-usage-filter-trigger"],
+      ],
+      [
+        "src/components/usage/UsageHero.tsx",
+        [
+          "ccs-usage-hero",
+          "ccs-usage-metric-grid",
+          "ccs-usage-metric",
+          "ccs-usage-mini-metric",
+          "ccs-usage-metric-label",
+          "ccs-usage-metric-value",
+          "ccs-usage-more",
+        ],
+      ],
+      [
+        "src/components/usage/UsageTrendChart.tsx",
+        ["ccs-usage-trend", "ccs-usage-trend-title", "ccs-usage-trend-canvas"],
+      ],
+      [
+        "src/components/apps/AppsPage.tsx",
+        [
+          "ccs-apps-page",
+          "ccs-apps-content",
+          "ccs-apps-columns",
+          "ccs-apps-column-app",
+          "ccs-apps-column-version",
+          "ccs-apps-column-action",
+          "ccs-apps-column-visibility",
+          "ccs-apps-column-menu",
+          "ccs-apps-row",
+          "ccs-apps-row-grid",
+          "ccs-apps-row-main",
+          "ccs-apps-info",
+          "ccs-apps-name",
+          "ccs-apps-meta",
+          "ccs-apps-version",
+          "ccs-apps-action",
+          "ccs-apps-visibility",
+          "ccs-apps-menu",
+          "ccs-apps-footer",
+        ],
+      ],
+      [
+        "src/components/settings/AuthCenterPanel.tsx",
+        ["ccs-auth-center", "ccs-auth-browser-toggle", "ccs-auth-section"],
+      ],
+    ]);
+
+    for (const [file, hooks] of expected) {
+      const owner = attributes(file);
+      for (const hook of hooks) {
+        expect(owner.classes.has(hook), `${file}: ${hook}`).toBe(true);
+      }
+    }
+
+    const selectors = new Set<string>();
+    css.walkRules((rule) =>
+      rule.selectors.forEach((selector) => selectors.add(selector)),
+    );
+    for (const removed of [
+      ".ccs-usage-hero-row",
+      ".ccs-usage-metrics",
+      ".ccs-usage-trend-spacer",
+      ".ccs-usage-trend-header",
+      ".ccs-usage-trend-controls",
+      ".ccs-apps-list",
+    ]) {
+      expect(selectors.has(removed), removed).toBe(false);
     }
   });
 });

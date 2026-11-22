@@ -23,6 +23,7 @@ const androidAlias: Record<string, string> = {
   "@tauri-apps/api/app": bridge("app.ts"),
   "@tauri-apps/api/path": bridge("path.ts"),
   "@tauri-apps/api/window": bridge("window.ts"),
+  "@tauri-apps/api/webview": bridge("webview.ts"),
   "@tauri-apps/plugin-process": bridge("plugin-process.ts"),
   "@tauri-apps/plugin-updater": bridge("plugin-updater.ts"),
   "@tauri-apps/plugin-dialog": bridge("plugin-dialog.ts"),
@@ -80,9 +81,16 @@ export default defineConfig(({ command }) => ({
   build: {
     outDir: isAndroid ? "../dist-android" : "../dist",
     emptyOutDir: true,
-    // WebView 是 Chromium，且只有一个 HTML 入口，拆包收益不大；
-    // 单文件能减少 file:// 下的请求数，首屏更快。
     chunkSizeWarningLimit: 4096,
+    rollupOptions: {
+      // 托盘面板是单独的入口，不加载主界面
+      input: {
+        main: path.resolve(__dirname, "src/index.html"),
+        ...(!isAndroid && {
+          "tray-panel": path.resolve(__dirname, "src/tray-panel.html"),
+        }),
+      },
+    },
   },
   server: {
     port: 3000,

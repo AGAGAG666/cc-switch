@@ -35,6 +35,7 @@ impl std::error::Error for Error {}
 pub type Result<T> = std::result::Result<T, Error>;
 
 /// 一个可用更新。Android 上永不构造，仅保持类型与方法签名以便编译。
+#[derive(Clone)]
 pub struct Update {
     pub version: String,
     pub current_version: String,
@@ -61,7 +62,7 @@ impl Update {
 }
 
 /// 复刻 `Updater`。
-pub struct Updater<R: Runtime> {
+pub struct Updater<R: Runtime = tauri::Wry> {
     _marker: PhantomData<R>,
 }
 

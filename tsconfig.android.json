@@ -8,6 +8,7 @@
       "@tauri-apps/api/app": ["src/android-bridge/app.ts"],
       "@tauri-apps/api/path": ["src/android-bridge/path.ts"],
       "@tauri-apps/api/window": ["src/android-bridge/window.ts"],
+      "@tauri-apps/api/webview": ["src/android-bridge/webview.ts"],
       "@tauri-apps/plugin-process": ["src/android-bridge/plugin-process.ts"],
       "@tauri-apps/plugin-updater": ["src/android-bridge/plugin-updater.ts"],
       "@tauri-apps/plugin-dialog": ["src/android-bridge/plugin-dialog.ts"],

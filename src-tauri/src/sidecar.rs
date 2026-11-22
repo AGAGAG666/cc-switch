@@ -209,7 +209,11 @@ async fn rpc(
         Err(msg) => {
             // 与 Tauri IPC 一致：命令返回 Err 是业务错误，不是传输层错误。
             // 用 200 + ok:false 让前端 shim 统一 reject，避免和 401/404 混淆。
-            log::debug!("命令 {cmd} 失败: {msg}");
+            if cmd == "parse_deeplink" {
+                log::debug!("命令 parse_deeplink 失败");
+            } else {
+                log::debug!("命令 {cmd} 失败: {msg}");
+            }
             (StatusCode::OK, Json(json!({ "ok": false, "error": msg })))
         }
     }
@@ -240,21 +244,26 @@ async fn session_messages_stream(
     if !authorized(&shared, &headers) {
         return plain(StatusCode::UNAUTHORIZED, "invalid sidecar token");
     }
-    let (sender, receiver) = mpsc::channel::<TranscriptChunk>(8);
+    let (sender, receiver) = mpsc::channel::<String>(8);
     tokio::task::spawn_blocking(move || {
-        let send = |chunk: TranscriptChunk| sender.blocking_send(chunk).is_ok();
+        let send = |chunk: TranscriptChunk<'_>| {
+            let data = serde_json::to_string(&chunk).unwrap_or_else(|_| {
+                r#"{"type":"error","message":"session chunk encoding failed"}"#.to_string()
+            });
+            sender.blocking_send(data).is_ok()
+        };
         let loaded =
             match session_manager::load_transcript(&request.provider_id, &request.source_path) {
                 Ok(loaded) => loaded,
                 Err(message) => {
-                    let _ = send(TranscriptChunk::Error { message });
+                    let _ = send(TranscriptChunk::Error { message: &message });
                     return;
                 }
             };
         let transcript = loaded.transcript;
         if !send(TranscriptChunk::Header {
             total: transcript.messages.len(),
-            turns: transcript.turns.clone(),
+            turns: &transcript.turns,
             cached: loaded.cached,
             parse_ms: loaded.parse_ms,
         }) {
@@ -263,7 +272,7 @@ async fn session_messages_stream(
         for (start, end) in chunk_ranges(&transcript.message_bytes) {
             if !send(TranscriptChunk::Messages {
                 start,
-                messages: transcript.messages[start..end].to_vec(),
+                messages: &transcript.messages[start..end],
             }) {
                 return;
             }
@@ -273,10 +282,7 @@ async fn session_messages_stream(
         });
     });
     let stream = futures::stream::unfold(receiver, |mut rx| async move {
-        rx.recv().await.map(|chunk| {
-            let data = serde_json::to_string(&chunk).unwrap_or_else(|_| {
-                r#"{"type":"error","message":"session chunk encoding failed"}"#.to_string()
-            });
+        rx.recv().await.map(|data| {
             (Ok::<_, Infallible>(Event::default().data(data)), rx)
         })
     });

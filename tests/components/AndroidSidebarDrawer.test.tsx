@@ -3,6 +3,7 @@ import path from "node:path";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { APP_IDS } from "@/config/appSpecs";
 import type { VisibleApps } from "@/types";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
@@ -41,18 +42,9 @@ const media = (query: string) =>
     removeEventListener() {},
     dispatchEvent: () => true,
   }) as MediaQueryList;
-const visibleApps: VisibleApps = {
-  claude: false,
-  "claude-desktop": false,
-  codex: true,
-  gemini: false,
-  grokbuild: false,
-  opencode: false,
-  openclaw: false,
-  hermes: false,
-  pi: false,
-  mcode: false,
-};
+const visibleApps = Object.fromEntries(
+  APP_IDS.map((id) => [id, id === "codex"]),
+) as VisibleApps;
 function frame(modal = false, selectOpen = false) {
   return (
     <QueryClientProvider

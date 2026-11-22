@@ -2,7 +2,7 @@
 
 本项目将 CC Switch 适配到 [ZeroTermux-CCS](https://github.com/AGAGAG666/ZeroTermux-CCS)，提供供应商、模型、Skills 和配置管理，以及本地协议路由。支持在应用内或浏览器访问，并针对手机窄屏和触控操作调整布局。
 
-基于 [farion1231/cc-switch](https://github.com/farion1231/cc-switch) [v4.0.9](https://github.com/farion1231/cc-switch/releases/tag/v4.0.9)，上游提交 [`8845b1ef`](https://github.com/farion1231/cc-switch/commit/8845b1ef799aa8810b864b122de6af5f4629de10)。本项目为非官方适配，与上游无从属或背书关系；许可证为 MIT。
+基于 [farion1231/cc-switch](https://github.com/farion1231/cc-switch) [v4.0.38](https://github.com/farion1231/cc-switch/releases/tag/v4.0.38)，上游提交 [`2c084ec`](https://github.com/farion1231/cc-switch/commit/2c084ec752a985fa77470facc14cad76ee67e8e1)。本项目为非官方适配，与上游无从属或背书关系；许可证为 MIT。
 
 ## 使用
 
