@@ -83,7 +83,7 @@ sys-locale = "0.3"
 # 见下方 `cfg(target_os = "android")` 段。这里的写法与上游保持逐字一致，
 # 以便 rebase 时不产生无意义冲突。
 [target.'cfg(not(target_os = "android"))'.dependencies]
-tauri = { version = "2.8.2", features = ["tray-icon", "protocol-asset", "image-png"] }
+tauri = { version = "2.8.2", features = ["tray-icon", "protocol-asset", "image-png", "macos-private-api"] }
 tauri-plugin-log = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-process = "2"
