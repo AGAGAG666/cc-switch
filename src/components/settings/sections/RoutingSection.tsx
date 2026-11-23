@@ -199,10 +199,10 @@ export function RoutingSection({ onOpenApp }: RoutingSectionProps) {
   return (
     <>
       <SettingsBlock title={t("routingSettings.service")}>
-        <SettingsCard>
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3.5">
-            <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-1 text-body font-medium text-fg-1">
+        <SettingsCard className="ccs-routing-service-card">
+          <div className="ccs-routing-service-summary flex flex-wrap items-center gap-x-6 gap-y-3 px-4 py-3.5">
+            <div className="ccs-routing-service-identity min-w-0 flex-1">
+              <div className="ccs-routing-service-name flex items-center gap-1 text-body font-medium text-fg-1">
                 {t("routingSettings.serviceName")}
                 <HelpTip title={t("routingSettings.serviceName")}>
                   {t("routingSettings.serviceHelp")}
@@ -224,7 +224,7 @@ export function RoutingSection({ onOpenApp }: RoutingSectionProps) {
               </div>
             </div>
             {running && (
-              <dl className="flex gap-6 text-end">
+              <dl className="ccs-routing-service-stats flex gap-6 text-end">
                 {[
                   [
                     t("routingSettings.totalRequests"),
@@ -239,7 +239,7 @@ export function RoutingSection({ onOpenApp }: RoutingSectionProps) {
                     status?.active_connections ?? 0,
                   ],
                 ].map(([label, value]) => (
-                  <div key={String(label)}>
+                  <div key={String(label)} className="ccs-routing-service-stat">
                     <dt className="text-caption text-fg-2">{label}</dt>
                     <dd className="m-0 text-strong font-semibold tabular-nums text-fg-1">
                       {typeof value === "number"
@@ -250,27 +250,29 @@ export function RoutingSection({ onOpenApp }: RoutingSectionProps) {
                 ))}
               </dl>
             )}
-            {running ? (
-              <DisabledReason reason={stopReason} align="end">
+            <div className="ccs-routing-service-action">
+              {running ? (
+                <DisabledReason reason={stopReason} align="end">
+                  <Button
+                    variant="neutral"
+                    size="regular"
+                    disabled={isPending}
+                    onClick={() => void stopProxyServer()}
+                  >
+                    {t("routingSettings.stop")}
+                  </Button>
+                </DisabledReason>
+              ) : (
                 <Button
                   variant="neutral"
                   size="regular"
                   disabled={isPending}
-                  onClick={() => void stopProxyServer()}
+                  onClick={() => void startProxyServer()}
                 >
-                  {t("routingSettings.stop")}
+                  {t("routingSettings.start")}
                 </Button>
-              </DisabledReason>
-            ) : (
-              <Button
-                variant="neutral"
-                size="regular"
-                disabled={isPending}
-                onClick={() => void startProxyServer()}
-              >
-                {t("routingSettings.start")}
-              </Button>
-            )}
+              )}
+            </div>
           </div>
 
           <SettingsRow

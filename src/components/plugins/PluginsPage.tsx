@@ -507,7 +507,7 @@ export function PluginsPage({ apps, initialApp }: PluginsPageProps) {
     <PageTabs<PluginsView>
       aria-label={t("pluginsPage.viewAria")}
       idPrefix="plugins-view"
-      className="h-11"
+      className="ccs-plugins-tabs h-11"
       value={view}
       onValueChange={setView}
       items={[
@@ -686,9 +686,9 @@ export function PluginsPage({ apps, initialApp }: PluginsPageProps) {
     const shown = view === "discover" ? discoverPager.pageRows : rows;
     return (
       <>
-        <div className="flex h-14 shrink-0 items-center gap-3">
+        <div className="ccs-plugins-search-row flex h-14 shrink-0 items-center gap-3">
           <SearchField
-            containerClassName="w-[320px] min-w-[180px] shrink"
+            containerClassName="ccs-plugins-search w-[320px] min-w-[180px] shrink"
             value={search}
             onValueChange={setSearch}
             placeholder={t("pluginsPage.searchPlaceholder")}
@@ -865,7 +865,10 @@ export function PluginsPage({ apps, initialApp }: PluginsPageProps) {
   return (
     <>
       {header}
-      <div id="main-content" className="flex min-h-0 flex-1 flex-col">
+      <div
+        id="main-content"
+        className="ccs-plugins-content flex min-h-0 flex-1 flex-col"
+      >
         <div className="shrink-0 px-6 pt-1">{tabs}</div>
         <div className="flex min-h-0 flex-1 flex-col px-6 pb-5">
           {renderBody()}
@@ -1133,13 +1136,13 @@ function PluginRow({
   return (
     <div
       className={cn(
-        "flex items-center gap-3 px-4 py-2.5",
+        "ccs-plugin-row flex items-center gap-3 px-4 py-2.5",
         !isLast && "border-b border-border",
       )}
     >
       <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="truncate text-body font-medium text-fg-1">
+        <div className="ccs-plugin-heading flex min-w-0 items-center gap-2">
+          <span className="ccs-plugin-name truncate text-body font-medium text-fg-1">
             {label}
           </span>
           {entry.marketplace && (

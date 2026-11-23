@@ -1,0 +1,166 @@
+/* Android-only hooks for the usage summary and local-routing service card. */
+.ccs-usage-hero {
+  container-name: ccs-usage-summary;
+  container-type: inline-size;
+}
+
+.ccs-usage-metric-grid,
+.ccs-usage-submetric-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ccs-usage-metric-content {
+  gap: 4px;
+}
+
+.ccs-usage-metric-label {
+  height: auto;
+  min-height: var(--lh-caption);
+  line-height: var(--lh-caption);
+}
+
+.ccs-usage-metric-label > span {
+  flex: 0 0 auto;
+}
+
+.ccs-usage-metric-label > .ccs-usage-metric-label-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: normal;
+  word-break: normal;
+  text-overflow: clip;
+}
+
+.ccs-usage-metric-value {
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+.ccs-routing-service-card {
+  container-name: ccs-routing-service;
+  container-type: inline-size;
+}
+
+.ccs-routing-service-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+}
+
+.ccs-routing-service-identity {
+  min-width: 0;
+}
+
+.ccs-routing-service-name {
+  white-space: normal;
+  overflow-wrap: normal;
+  word-break: keep-all;
+}
+
+.ccs-routing-service-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(5.75rem, 1fr));
+  width: 100%;
+  gap: 8px 16px;
+  text-align: start;
+}
+
+.ccs-routing-service-stat {
+  min-width: 0;
+}
+
+.ccs-routing-service-stat > dt {
+  white-space: normal;
+  word-break: normal;
+}
+
+.ccs-routing-service-stat > dd {
+  white-space: nowrap;
+}
+
+.ccs-routing-service-action {
+  justify-self: stretch;
+  width: 100%;
+}
+
+.ccs-routing-service-action > button,
+.ccs-routing-service-action > span,
+.ccs-routing-service-action > span > button {
+  width: 100%;
+}
+
+@container ccs-usage-summary (max-width: 18rem) {
+  .ccs-usage-metric,
+  .ccs-usage-mini-metric {
+    padding-inline: clamp(4px, 2cqi, 10px);
+  }
+  .ccs-usage-metric .ccs-usage-metric-value {
+    font-size: clamp(1rem, 8cqi, 1.5rem);
+  }
+}
+
+@container ccs-usage-summary (min-width: 42rem) {
+  .ccs-usage-metric-grid,
+  .ccs-usage-submetric-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+html[data-density="comfortable"] .ccs-usage-metric-grid,
+html[data-density="comfortable"] .ccs-usage-submetric-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@container ccs-usage-summary (min-width: 46rem) {
+  html[data-density="comfortable"] .ccs-usage-metric-grid,
+  html[data-density="comfortable"] .ccs-usage-submetric-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@container ccs-routing-service (min-width: 20rem) {
+  .ccs-routing-service-summary {
+    grid-template-columns: minmax(max-content, 1fr) auto;
+  }
+
+  .ccs-routing-service-stats {
+    grid-column: 1 / -1;
+  }
+
+  .ccs-routing-service-action {
+    grid-column: 2;
+    grid-row: 1;
+    justify-self: end;
+    width: auto;
+  }
+
+  .ccs-routing-service-action > button,
+  .ccs-routing-service-action > span,
+  .ccs-routing-service-action > span > button {
+    width: auto;
+  }
+}
+
+@container ccs-routing-service (min-width: 34rem) {
+  .ccs-routing-service-summary {
+    grid-template-columns: minmax(max-content, 1fr) auto auto;
+  }
+
+  .ccs-routing-service-stats {
+    grid-column: auto;
+    display: flex;
+    width: auto;
+    gap: 24px;
+    text-align: end;
+  }
+
+  .ccs-routing-service-action {
+    grid-column: auto;
+    grid-row: auto;
+  }
+}

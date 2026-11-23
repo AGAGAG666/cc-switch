@@ -1,0 +1,166 @@
+/* Layout follows the space available to each page and provider card. */
+.ccs-provider-search {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.ccs-plugins-content {
+  container: ccs-plugins / inline-size;
+}
+
+.ccs-provider-card-container {
+  container: ccs-provider / inline-size;
+}
+
+@container ccs-plugins (max-width: 560px) {
+  .ccs-plugins-content > div {
+    padding-inline: 12px;
+  }
+
+  .ccs-plugins-tabs {
+    height: auto;
+    min-height: 44px;
+    flex-wrap: wrap;
+    gap: 0 12px;
+    align-items: center;
+  }
+
+  .ccs-plugins-tabs > [role="tablist"] {
+    height: 44px;
+    max-width: 100%;
+    overflow-x: auto;
+  }
+
+  .ccs-plugins-tabs > .flex-1 {
+    display: none;
+  }
+
+  .ccs-plugins-tabs > :last-child:not([role="tablist"]) {
+    height: auto;
+    min-height: 36px;
+    max-width: 100%;
+    margin-block-end: 6px;
+  }
+
+  .ccs-plugins-search-row {
+    height: auto;
+    min-height: 56px;
+    padding-block: 8px;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+  }
+
+  .ccs-plugins-search {
+    flex: 1 1 180px;
+    width: auto;
+    min-width: 0;
+  }
+
+  .ccs-plugins-search-row > span:last-child {
+    flex: 1 1 100%;
+    margin-inline-start: 0;
+    white-space: normal;
+    overflow: visible;
+  }
+
+  .ccs-plugin-row {
+    align-items: flex-start;
+    gap: 8px;
+    padding-inline: 10px;
+  }
+
+  .ccs-plugin-heading {
+    flex-wrap: wrap;
+    row-gap: 3px;
+  }
+
+  .ccs-plugin-heading > .ccs-plugin-name {
+    flex: 1 0 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .ccs-plugin-heading > span {
+    max-width: 100%;
+  }
+
+  .ccs-plugin-row p {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+}
+
+@container ccs-provider (max-width: 560px) {
+  .ccs-provider-card-row {
+    display: grid;
+    grid-template-columns: 40px 32px minmax(0, 1fr);
+    gap: 6px 8px;
+    min-height: 0;
+    padding: 10px 8px;
+    align-items: start;
+  }
+
+  .ccs-provider-card-row > button:first-child {
+    width: 40px;
+    opacity: 1;
+  }
+
+  .ccs-provider-card-heading {
+    flex-wrap: wrap;
+    row-gap: 4px;
+  }
+
+  .ccs-provider-card-heading > h3 {
+    flex: 1 1 100%;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .ccs-provider-card-tools {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+  }
+
+  .ccs-provider-quota {
+    width: 100%;
+    max-width: none;
+    text-align: start;
+    margin: 0;
+  }
+
+  .ccs-provider-quota > div {
+    justify-content: flex-start;
+  }
+
+  .ccs-provider-quota:has(> div:empty) {
+    display: none;
+  }
+
+  .ccs-provider-quota .ccs-quota-error {
+    align-items: flex-start;
+    width: auto;
+    max-width: 100%;
+    white-space: normal;
+    text-align: start;
+  }
+
+  .ccs-quota-error .truncate {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .ccs-provider-actions {
+    flex-wrap: wrap;
+    width: 100%;
+    justify-content: flex-end;
+    gap: 4px;
+  }
+
+  .ccs-provider-actions > div:first-child {
+    margin-inline-end: auto;
+    min-width: 0;
+  }
+}

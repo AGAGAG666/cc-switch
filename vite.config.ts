@@ -40,7 +40,12 @@ function mobileCssPlugin(): Plugin {
     transformIndexHtml: {
       order: "post",
       handler() {
-        const css = ["mobile.css", "mobile-v4-pages.css"]
+        const css = [
+          "mobile.css",
+          "mobile-v4-pages.css",
+          "mobile-usage-router.css",
+          "mobile-plugin-provider.css",
+        ]
           .map((name) => fs.readFileSync(bridge(name), "utf-8"))
           .join("\n");
         return [

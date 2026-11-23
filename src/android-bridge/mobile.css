@@ -14,6 +14,9 @@
   /* 状态栏/挖孔安全区。ZeroTermux 侧用 edge-to-edge，必须自己躲。 */
   --ccs-safe-top: env(safe-area-inset-top, 0px);
   --ccs-safe-bottom: env(safe-area-inset-bottom, 0px);
+  /* Root CSS zoom scales viewport-unit lengths too; keep the shell inside the visible viewport. */
+  --ccs-viewport-height: calc(100dvh / var(--ccs-page-zoom, 1));
+  --ccs-viewport-width: calc(100vw / var(--ccs-page-zoom, 1));
 }
 
 html,
@@ -29,7 +32,7 @@ body {
 
 /* h-screen 在移动浏览器上会被地址栏/输入法搞错，dvh 才是实际可视高度 */
 .h-screen {
-  height: 100dvh;
+  height: calc(var(--ccs-viewport-height) - var(--ccs-safe-top) - var(--ccs-safe-bottom));
 }
 
 /* ── 1. 窄屏栅格收敛 ───────────────────────────────────────── */
@@ -65,8 +68,8 @@ body {
   }
   /* 弹窗留出边距，别贴边 */
   [role="dialog"] {
-    max-width: calc(100vw - 24px);
-    max-height: calc(100dvh - 24px);
+    max-width: calc(var(--ccs-viewport-width) - 24px);
+    max-height: calc(var(--ccs-viewport-height) - 24px);
   }
 }
 
@@ -389,7 +392,7 @@ svg.lucide {
     position: absolute;
     inset-block: 0;
     inset-inline-start: 0;
-    width: min(280px, calc(100vw - 40px)) !important;
+    width: min(280px, calc(var(--ccs-viewport-width) - 40px)) !important;
     z-index: 2;
     box-shadow: 8px 0 24px rgb(0 0 0 / 24%);
   }

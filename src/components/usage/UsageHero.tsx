@@ -122,11 +122,11 @@ function MetricCell({
             : "group-hover:bg-sidebar",
         )}
       />
-      <div className="pointer-events-none relative flex min-w-0 flex-col gap-0.5">
+      <div className="ccs-usage-metric-content pointer-events-none relative flex min-w-0 flex-col gap-0.5">
         <div className="ccs-usage-metric-label flex h-[18px] min-w-0 items-center gap-0.5">
           <span
             className={cn(
-              "truncate text-caption",
+              "ccs-usage-metric-label-text truncate text-caption",
               selected ? "text-fg-1" : "text-fg-2",
             )}
           >
@@ -182,7 +182,7 @@ function SubMetric({
   return (
     <div className="ccs-usage-mini-metric flex min-w-0 flex-col gap-0.5 px-4 py-2.5">
       <span className="ccs-usage-metric-label flex h-[18px] items-center gap-0.5 whitespace-nowrap text-caption text-fg-3">
-        {label}
+        <span className="ccs-usage-metric-label-text">{label}</span>
         {help && <HelpTip title={help.title}>{help.body}</HelpTip>}
       </span>
       <HoverTip content={title} side="right">
@@ -320,7 +320,12 @@ export function UsageHero({
         {...(moreOpen ? {} : { inert: "" })}
       >
         <div className="min-h-0 overflow-hidden">
-          <div className={cn("grid border-t border-border", columns)}>
+          <div
+            className={cn(
+              "ccs-usage-submetric-grid grid border-t border-border",
+              columns,
+            )}
+          >
             <SubMetric
               label={t("usage.freshInput")}
               value={placeholder ?? tokens(input)}

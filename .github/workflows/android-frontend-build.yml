@@ -63,7 +63,7 @@ jobs:
         run: pnpm typecheck:android
 
       - name: Android bridge regression tests
-        run: pnpm exec vitest run src/android-bridge/runtime.test.ts src/android-bridge/runtime.file-picker.test.ts src/android-bridge/deeplink.test.ts
+        run: pnpm exec vitest run src/android-bridge/webview.test.ts src/android-bridge/runtime.test.ts src/android-bridge/runtime.file-picker.test.ts src/android-bridge/deeplink.test.ts
 
       - name: Android mobile layout regression tests
         run: >-

@@ -617,7 +617,7 @@ export function ProviderList({
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: 8 }}
           transition={{ duration: 0.15, ease: "easeOut" }}
-          className="relative flex w-64 min-w-[10rem] shrink items-center"
+          className="ccs-provider-search relative flex w-64 min-w-[10rem] shrink items-center"
         >
           <Search className="pointer-events-none absolute start-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-3" />
           <Input
@@ -788,7 +788,7 @@ function SortableProviderCard(props: SortableProviderCardProps) {
   };
 
   return (
-    <div ref={setNodeRef} style={style}>
+    <div ref={setNodeRef} style={style} className="ccs-provider-card-container">
       <ProviderCard
         {...props}
         dragHandleProps={{ attributes, listeners, isDragging }}

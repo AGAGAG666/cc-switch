@@ -103,7 +103,7 @@ export function ProviderCardActions({
   const { status, buttons, move, menuItems = [] } = presentation;
 
   return (
-    <div className="flex shrink-0 items-center gap-2">
+    <div className="ccs-provider-actions flex shrink-0 items-center gap-2">
       {/* 主操作位定宽：图标按钮和「● 使用中」这类状态文字宽度不同，不定宽的话
           切换后左边的用量会被推开、跟其他卡片对不齐。按最长的常见状态留宽，靠右对齐 */}
       <div className="flex min-w-20 items-center justify-end gap-1">

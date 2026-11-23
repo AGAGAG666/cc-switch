@@ -2,7 +2,9 @@
 export function getCurrentWebview() {
   return {
     async setZoom(zoom: number): Promise<void> {
-      document.documentElement.style.zoom = String(zoom);
+      const style = document.documentElement.style;
+      style.zoom = String(zoom);
+      style.setProperty("--ccs-page-zoom", String(zoom));
     },
   };
 }

@@ -671,7 +671,7 @@ export function ProviderCard({
 
         <div className="ccs-provider-card-tools flex shrink-0 items-center gap-3">
           {/* 额度列 136 宽，带重置倒计时时 194 宽（见 QuotaLines） */}
-          <div className="max-w-[208px] text-end">
+          <div className="ccs-provider-quota max-w-[208px] text-end">
             <div className="flex items-center justify-end gap-1">
               {copilotCliQuotaEnabled ? (
                 <CopilotCliQuotaFooter

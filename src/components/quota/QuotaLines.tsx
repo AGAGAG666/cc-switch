@@ -218,10 +218,8 @@ export function QuotaLines({
 }: QuotaLinesProps) {
   const { t } = useTranslation();
   const now = useNow(Boolean(queriedAt) || lines.some((line) => line.resetsAt));
-  const refresh = useClickRefreshFeedback(
-    loading,
-    lines.some((line) => line.key === FAILED_LINE_KEY),
-  );
+  const failed = lines.some((line) => line.key === FAILED_LINE_KEY);
+  const refresh = useClickRefreshFeedback(loading, failed);
   const spinning = refresh.phase === "spinning";
   // 点过之后，鼠标移出 / 焦点离开之前不再露 ↻：否则 ✓ 一消失，还停在上面的鼠标又把 ↻ 叫出来
   const [quiet, setQuiet] = useState(false);
@@ -270,6 +268,7 @@ export function QuotaLines({
   ));
 
   const className = cn(
+    failed && "ccs-quota-error",
     "flex shrink-0 flex-col items-end text-caption leading-[18px] tabular-nums whitespace-nowrap",
     // 文字仍是 136 宽，倒计时那格（52 + 间距）另加；整列下拉的 ⌄ 那格（14）也另加
     showReset ? "w-[194px]" : "w-[136px]",
